@@ -1,1 +1,0 @@
-# vinayakdsci.github.io
