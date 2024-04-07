@@ -28,7 +28,7 @@ figure {
   * Basic styling
   */
 body {
-  font: 400 11.9px/1.6 "OpenSans", "Hiragino Sans GB", "Microsoft Yahei", "微软雅黑", "Bitter", sans-serif;
+  font: 400 15.3px/1.6 "OpenSans", "Hiragino Sans GB", "Microsoft Yahei", "微软雅黑", "Bitter", sans-serif;
   color: #111;
   background-color: #fdfdfd;
   -webkit-text-size-adjust: 100%;
@@ -45,7 +45,7 @@ body {
 @media screen and (min-width: 600px) {
   body {
     padding: 0 5%;
-    font: 400 14px/1.8 "OpenSans", "Hiragino Sans GB", "Microsoft Yahei", "微软雅黑", "Bitter", sans-serif;
+    font: 400 18px/1.8 "OpenSans", "Hiragino Sans GB", "Microsoft Yahei", "微软雅黑", "Bitter", sans-serif;
   }
 }
 
@@ -65,7 +65,7 @@ ul,
 ol,
 dl,
 figure {
-  margin-bottom: 15px;
+  margin-bottom: 13.5px;
 }
 
 /**
@@ -108,7 +108,7 @@ figure > img {
 }
 
 figcaption {
-  font-size: 11.9px;
+  font-size: 15.3px;
 }
 
 /**
@@ -116,7 +116,7 @@ figcaption {
   */
 ul,
 ol {
-  margin-left: 30px;
+  margin-left: 27px;
 }
 
 li > ul,
@@ -154,13 +154,13 @@ a:hover {
 blockquote {
   color: #828282;
   border-left: 4px solid #e8e8e8;
-  padding-left: 15px;
-  font-size: 14px;
+  padding-left: 13.5px;
+  font-size: 18px;
   letter-spacing: -1px;
 }
 @media (max-width: 600px) {
   blockquote {
-    font-size: 11.2px;
+    font-size: 14.4px;
   }
 }
 blockquote > :last-child {
@@ -172,7 +172,7 @@ blockquote > :last-child {
   */
 pre,
 code {
-  font-size: 12.6px;
+  font-size: 16.2px;
   border: 1px solid #e0e0e0;
   border-radius: 3px;
   background-color: #f0f0f0;
@@ -196,19 +196,19 @@ pre > code {
   * Wrapper
   */
 .wrapper {
-  max-width: -webkit-calc(1000px - (30px));
-  max-width: calc(1000px - (30px));
+  max-width: -webkit-calc(1000px - (27px));
+  max-width: calc(1000px - (27px));
   margin-right: auto;
   margin-left: auto;
-  padding-right: 15px;
-  padding-left: 15px;
+  padding-right: 13.5px;
+  padding-left: 13.5px;
 }
 @media screen and (min-width: 1000px) {
   .wrapper {
-    max-width: -webkit-calc(1000px - (30px * 2));
-    max-width: calc(1000px - 30px * 2);
-    padding-right: 30px;
-    padding-left: 30px;
+    max-width: -webkit-calc(1000px - (27px * 2));
+    max-width: calc(1000px - 27px * 2);
+    padding-right: 27px;
+    padding-left: 27px;
   }
 }
 
@@ -245,7 +245,7 @@ pre > code {
   * Tables
   */
 table {
-  margin-bottom: 30px;
+  margin-bottom: 27px;
   width: 100%;
   text-align: left;
   color: #3f3f3f;
@@ -257,7 +257,7 @@ table tr:nth-child(even) {
 }
 table th,
 table td {
-  padding: 10px 15px;
+  padding: 9px 13.5px;
 }
 table th {
   background-color: #f0f0f0;
@@ -299,15 +299,15 @@ nav li {
 .site-header {
   border-top: 5px solid #424242;
   border-bottom: 1px solid #e8e8e8;
-  min-height: 55.95px;
-  line-height: 56.7px;
+  min-height: 50.355px;
+  line-height: 72.9px;
   position: relative;
 }
 
 .site-nav {
   position: absolute;
   top: 9px;
-  right: 15px;
+  right: 13.5px;
   background-color: #fdfdfd;
   border: 1px solid #e8e8e8;
   border-radius: 5px;
@@ -383,22 +383,22 @@ nav li {
  * Site footer
  */
 .site-footer {
-  padding: 20px 0;
+  padding: 18px 0;
 }
 
 .footer-heading {
-  margin-bottom: 15px;
+  margin-bottom: 13.5px;
 }
 
 @media (max-width: 750px) {
   .p-name {
-    font-size: 7px;
+    font-size: 16.2px;
   }
 }
 
 @media (max-width: 750px) {
   .u-email {
-    font-size: 7px;
+    font-size: 16.2px;
   }
 }
 
@@ -412,12 +412,12 @@ nav li {
  * Page content
  */
 .page-content {
-  padding: 30px 0;
+  padding: 27px 0;
   flex: 1 0 auto;
 }
 
 .page-heading {
-  font-size: 28px;
+  font-size: 36px;
 }
 
 .home-title {
@@ -428,23 +428,23 @@ nav li {
 .home-heading {
   font-weight: 1000;
   color: #940000;
-  font-size: 30.8px;
+  font-size: 39.6px;
 }
 @media (max-width: 750px) {
   .home-heading {
     margin-top: 20px;
-    font-size: 23.8px;
+    font-size: 30.6px;
   }
 }
 
 .home-sub-heading {
   margin-top: -0.6rem;
   color: #515151;
-  font-size: 14px;
+  font-size: 18px;
 }
 @media (max-width: 750px) {
   .home-sub-heading {
-    font-size: 11.2px;
+    font-size: 14.4px;
   }
 }
 
@@ -454,7 +454,7 @@ nav li {
   list-style: none;
 }
 .post-list li {
-  margin-bottom: 2.5px;
+  margin-bottom: 2.25px;
 }
 
 .post-year {
@@ -462,34 +462,34 @@ nav li {
   margin-bottom: 0.25rem;
   font-weight: 700;
   color: #940000;
-  font-size: 21px;
+  font-size: 27px;
 }
 @media (max-width: 750px) {
   .post-year {
-    font-size: 16.8px;
+    font-size: 21.6px;
   }
 }
 
 .post-meta {
   display: inline-block;
   min-width: 60px;
-  font-size: 14px;
+  font-size: 18px;
   color: #515151;
 }
 @media (max-width: 750px) {
   .post-meta {
-    font-size: 11.2px;
+    font-size: 14.4px;
   }
 }
 
 .post-link-layout {
   margin-left: 10%;
   display: inline;
-  font-size: 16.8px;
+  font-size: 21.6px;
 }
 @media (max-width: 750px) {
   .post-link-layout {
-    font-size: 14px;
+    font-size: 18px;
   }
 }
 
@@ -505,7 +505,7 @@ nav li {
 .black-link-footer {
   color: #111;
   text-decoration: none;
-  font-size: 8.4px;
+  font-size: 16.2px;
 }
 .black-link-footer:hover {
   color: #111;
@@ -521,13 +521,13 @@ nav li {
  * Posts
  */
 .post-header {
-  margin-bottom: 30px;
+  margin-bottom: 27px;
   color: #940000;
 }
 
 .post-title,
 .post-content h1 {
-  font-size: 30.8px;
+  font-size: 39.6px;
   line-height: 1.3;
   font-weight: 1000;
   margin-top: -0.5rem;
@@ -535,55 +535,55 @@ nav li {
 @media (max-width: 750px) {
   .post-title,
   .post-content h1 {
-    font-size: 25.2px;
+    font-size: 32.4px;
   }
 }
 @media screen and (min-width: 1000px) {
   .post-title,
   .post-content h1 {
-    font-size: 30.8px;
+    font-size: 39.6px;
   }
 }
 
 .post-content {
   margin-top: 3.2rem;
-  margin-bottom: 30px;
+  margin-bottom: 27px;
 }
 .post-content h2 {
-  font-size: 24.5px;
+  font-size: 31.5px;
 }
 @media screen and (min-width: 1000px) {
   .post-content h2 {
-    font-size: 28px;
+    font-size: 36px;
   }
 }
 .post-content h3 {
-  font-size: 19.25px;
+  font-size: 24.75px;
 }
 @media screen and (min-width: 1000px) {
   .post-content h3 {
-    font-size: 22.75px;
+    font-size: 29.25px;
   }
 }
 .post-content h4 {
-  font-size: 15.75px;
+  font-size: 20.25px;
 }
 @media screen and (min-width: 1000px) {
   .post-content h4 {
-    font-size: 17.5px;
+    font-size: 22.5px;
   }
 }
 
 .social-media-list {
   margin-top: -1rem;
   display: flex;
-  font-size: 14px;
+  font-size: 18px;
 }
 .social-media-list li {
   float: left;
 }
 .social-media-list li a {
-  padding-right: 6px;
+  padding-right: 5.4px;
 }
 
 /**
@@ -591,8 +591,8 @@ nav li {
  */
 @media screen and (min-width: 1000px) {
   .one-half {
-    width: -webkit-calc(50% - (30px / 2));
-    width: calc(50% - 30px / 2);
+    width: -webkit-calc(50% - (27px / 2));
+    width: calc(50% - 27px / 2);
   }
 }
 /**
@@ -623,11 +623,11 @@ nav li {
   color: #940000;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
-  font-size: 24.5px;
+  font-size: 31.5px;
 }
 .about-page .about-header .about-info .about-description {
   margin-top: -0.6rem;
-  font-size: 14px;
+  font-size: 18px;
   color: #515151;
 }
 .about-page .about-content {
