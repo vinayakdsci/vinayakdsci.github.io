@@ -391,13 +391,13 @@ nav li {
   margin-bottom: 15px;
 }
 
-@media (max-width: 500px) {
+@media (max-width: 750px) {
   .p-name {
     font-size: 12.6px;
   }
 }
 
-@media (max-width: 500px) {
+@media (max-width: 750px) {
   .u-email {
     font-size: 7px;
   }
@@ -431,7 +431,7 @@ nav li {
   color: #940000;
   font-size: 30.8px;
 }
-@media (max-width: 500px) {
+@media (max-width: 750px) {
   .home-heading {
     margin-top: 20px;
     font-size: 23.8px;
@@ -443,7 +443,7 @@ nav li {
   color: #515151;
   font-size: 14px;
 }
-@media (max-width: 500px) {
+@media (max-width: 750px) {
   .home-sub-heading {
     font-size: 11.2px;
   }
@@ -465,7 +465,7 @@ nav li {
   color: #940000;
   font-size: 21px;
 }
-@media (max-width: 500px) {
+@media (max-width: 750px) {
   .post-year {
     font-size: 16.8px;
   }
@@ -477,7 +477,7 @@ nav li {
   font-size: 14px;
   color: #515151;
 }
-@media (max-width: 500px) {
+@media (max-width: 750px) {
   .post-meta {
     font-size: 11.2px;
   }
@@ -488,7 +488,7 @@ nav li {
   display: inline;
   font-size: 16.8px;
 }
-@media (max-width: 500px) {
+@media (max-width: 750px) {
   .post-link-layout {
     font-size: 14px;
   }
@@ -533,7 +533,7 @@ nav li {
   font-weight: 1000;
   margin-top: -0.5rem;
 }
-@media (max-width: 500px) {
+@media (max-width: 750px) {
   .post-title,
   .post-content h1 {
     font-size: 25.2px;
