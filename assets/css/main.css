@@ -196,17 +196,17 @@ pre > code {
   * Wrapper
   */
 .wrapper {
-  max-width: -webkit-calc(800px - (30px));
-  max-width: calc(800px - (30px));
+  max-width: -webkit-calc(1000px - (30px));
+  max-width: calc(1000px - (30px));
   margin-right: auto;
   margin-left: auto;
   padding-right: 15px;
   padding-left: 15px;
 }
-@media screen and (min-width: 800px) {
+@media screen and (min-width: 1000px) {
   .wrapper {
-    max-width: -webkit-calc(800px - (30px * 2));
-    max-width: calc(800px - 30px * 2);
+    max-width: -webkit-calc(1000px - (30px * 2));
+    max-width: calc(1000px - 30px * 2);
     padding-right: 30px;
     padding-left: 30px;
   }
@@ -539,7 +539,7 @@ nav li {
     font-size: 25.2px;
   }
 }
-@media screen and (min-width: 800px) {
+@media screen and (min-width: 1000px) {
   .post-title,
   .post-content h1 {
     font-size: 30.8px;
@@ -553,7 +553,7 @@ nav li {
 .post-content h2 {
   font-size: 24.5px;
 }
-@media screen and (min-width: 800px) {
+@media screen and (min-width: 1000px) {
   .post-content h2 {
     font-size: 28px;
   }
@@ -561,7 +561,7 @@ nav li {
 .post-content h3 {
   font-size: 19.25px;
 }
-@media screen and (min-width: 800px) {
+@media screen and (min-width: 1000px) {
   .post-content h3 {
     font-size: 22.75px;
   }
@@ -569,7 +569,7 @@ nav li {
 .post-content h4 {
   font-size: 15.75px;
 }
-@media screen and (min-width: 800px) {
+@media screen and (min-width: 1000px) {
   .post-content h4 {
     font-size: 17.5px;
   }
@@ -590,7 +590,7 @@ nav li {
 /**
  * Grid helpers
  */
-@media screen and (min-width: 800px) {
+@media screen and (min-width: 1000px) {
   .one-half {
     width: -webkit-calc(50% - (30px / 2));
     width: calc(50% - 30px / 2);
