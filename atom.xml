@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+    <title>vinayakdsci</title>
+    <link rel="self" type="application/atom+xml" href="https://vinayakdsci.github.io/atom.xml"/>
+    <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io"/>
+    <generator uri="https://www.getzola.org/">Zola</generator>
+    <updated>2025-06-22T00:00:00+00:00</updated>
+    <id>https://vinayakdsci.github.io/atom.xml</id>
+    <entry xml:lang="en">
+        <title>Hi There</title>
+        <published>2025-06-22T00:00:00+00:00</published>
+        <updated>2025-06-22T00:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io/about/"/>
+        <id>https://vinayakdsci.github.io/about/</id>
+        
+        <content type="html" xml:base="https://vinayakdsci.github.io/about/">&lt;p&gt;I am &lt;strong&gt;Vinayak&lt;&#x2F;strong&gt;, a programmer who loves simple code, compilers, and programming languages.&lt;&#x2F;p&gt;
+&lt;p&gt;I make and break compilers and other low-level stuff, and possess an undying passion for programming languages and their design.&lt;&#x2F;p&gt;
+&lt;p&gt;Outside of fighting with computers, I love mathematics, music, and writing; And to combine all my hobbies into one big project, I also write this blog, where I narrate my adventures with the hope that my ramblings would prove to be of use to those who land on my blog out of curiosity, or who love the same things as I do.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;em&gt;&lt;strong&gt;And&lt;&#x2F;strong&gt;&lt;&#x2F;em&gt;, maybe even those who do not!&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>First Post</title>
+        <published>2025-06-22T00:00:00+00:00</published>
+        <updated>2025-06-22T00:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io/posts/2025-06-22/"/>
+        <id>https://vinayakdsci.github.io/posts/2025-06-22/</id>
+        
+        <content type="html" xml:base="https://vinayakdsci.github.io/posts/2025-06-22/">&lt;p&gt;And thus begins my blog. 1…2…3…&lt;strong&gt;&lt;em&gt;mic testing!&lt;&#x2F;em&gt;&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+</feed>
