@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+    <title>vinayakdsci</title>
+    <link rel="self" type="application/atom+xml" href="https://vinayakdsci.github.io/atom.xml"/>
+    <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io"/>
+    <generator uri="https://www.getzola.org/">Zola</generator>
+    <updated>2025-10-20T00:00:00+00:00</updated>
+    <id>https://vinayakdsci.github.io/atom.xml</id>
+    <entry xml:lang="en">
+        <title>Synapse: Implementing a DNN library from scratch</title>
+        <published>2025-10-20T00:00:00+00:00</published>
+        <updated>2025-10-20T00:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io/posts/synapse/2025-10-20/"/>
+        <id>https://vinayakdsci.github.io/posts/synapse/2025-10-20/</id>
+        
+        <content type="html" xml:base="https://vinayakdsci.github.io/posts/synapse/2025-10-20/">&lt;h1 id=&quot;a-deep-learning-framework-you-can-hold-in-your-head&quot;&gt;A Deep Learning Framework You Can Hold in Your Head&lt;&#x2F;h1&gt;
+&lt;p&gt;There’s something oddly satisfying about rebuilding the things we use every day.&lt;&#x2F;p&gt;
+&lt;p&gt;We, as engineers, work with deep-learning stacks all the time - &lt;strong&gt;PyTorch&lt;&#x2F;strong&gt;, &lt;strong&gt;TensorFlow&lt;&#x2F;strong&gt;, &lt;strong&gt;JAX&lt;&#x2F;strong&gt;, &lt;strong&gt;Triton&lt;&#x2F;strong&gt; - yet we rarely pause to ask &lt;em&gt;how&lt;&#x2F;em&gt; they actually work under the hood.&lt;&#x2F;p&gt;
+&lt;p&gt;So I decided to peel back all the abstractions - no GPUs, no kernels, no runtime magic - and rebuild the &lt;strong&gt;core ideas&lt;&#x2F;strong&gt; from scratch: &lt;strong&gt;tensors, computation graphs, and the chain rule&lt;&#x2F;strong&gt;.
+These are the building blocks that form the heart of every modern DNN library.&lt;&#x2F;p&gt;
+&lt;p&gt;And that’s how &lt;strong&gt;Synapse&lt;&#x2F;strong&gt; began: a lean, CPU-only (for now) deep-learning runtime that fits comfortably in a few hundred lines of Python and NumPy.&lt;&#x2F;p&gt;
+&lt;p&gt;The goal isn’t to reinvent PyTorch.
+It’s to &lt;em&gt;see the entire machine working at once&lt;&#x2F;em&gt; - every gear, every gradient.&lt;&#x2F;p&gt;
+&lt;p&gt;When you call &lt;code&gt;loss.backward()&lt;&#x2F;code&gt;, there’s a quiet symphony unfolding beneath the surface:
+contexts capture intermediate states, the computation graph gets topologically sorted, gradients ripple backward through nodes, and broadcasting semantics tie everything neatly together.&lt;&#x2F;p&gt;
+&lt;p&gt;The idea behind &lt;strong&gt;Synapse&lt;&#x2F;strong&gt; is to build that entire picture - end to end - in the simplest way possible, while still preserving the correctness and semantics you’d expect from libraries like PyTorch or JAX.&lt;&#x2F;p&gt;
+&lt;h1 id=&quot;the-heartbeat-of-synapse&quot;&gt;The Heartbeat of &lt;strong&gt;Synapse&lt;&#x2F;strong&gt;&lt;&#x2F;h1&gt;
+&lt;p&gt;At the center of Synapse is the autograd engine.
+Every tensor knows how it was created through a tiny structure called &lt;code&gt;grad_fn&lt;&#x2F;code&gt;.
+That node links to the operation that produced it - &lt;code&gt;Add&lt;&#x2F;code&gt;, &lt;code&gt;Matmul&lt;&#x2F;code&gt;, &lt;code&gt;ReLU&lt;&#x2F;code&gt; - and carries a small &lt;code&gt;context&lt;&#x2F;code&gt; object that remembers just enough from the forward pass to reconstruct its gradient later.&lt;&#x2F;p&gt;
+&lt;p&gt;During the backward pass, the engine performs a simple topological sort of all connected nodes and then walks them in reverse. Each node calls its own &lt;code&gt;backward&lt;&#x2F;code&gt; function, using what it saved earlier in the context. It’s pure chain rule, expressed in code.&lt;&#x2F;p&gt;
+&lt;p&gt;Here’s the satisfying part: once you write those 30–40 lines that make this work, you can literally see gradients flow through your graph like water.
+&lt;code&gt;x + y → z → sum() → .backward()&lt;&#x2F;code&gt;
+Each node lights up in reverse order, accumulating its partials as it goes.&lt;&#x2F;p&gt;
+&lt;figure&gt;
+&lt;p align=&quot;center&quot;&gt;
+  &lt;img src=&quot;..&#x2F;ComputeGraphSimpleContrast.png&quot; alt=&quot;Alt text&quot; width=&quot;600&quot; style=&quot;border: none&quot;&#x2F;&gt;
+  &lt;figcaption style=&quot;font-size: x-small; text-align: center&quot;&gt;Fig: A simple compute graph of an elementwise addtion of two tensors producing loss function L. Green arrows represent forward pass. Red arrows represent backward pass.&lt;&#x2F;figcaption&gt;
+&lt;&#x2F;p&gt;
+&lt;&#x2F;figure&gt;
+&lt;p&gt;The figure above is a simple demonstration of compute graph. When the backward pass starts, it goes from the loss function $L$ back to the nodes that created it, traversing $Z$, the addition node and then its inputs, $X$ and $Y$. Gradient computation takes place through the chain-rule, where the gradient of $L$ w.r.t $Z$ is used to compute gradients of $L$ w.r.t $X$ and $Y$.&lt;&#x2F;p&gt;
+&lt;h1 id=&quot;the-next-steps&quot;&gt;The Next Steps&lt;&#x2F;h1&gt;
+&lt;p&gt;This post was more of an announcement&#x2F;introduction post. In the next post, we shall go over the &lt;em&gt;mathematics&lt;&#x2F;em&gt; for backward propagation, covering all the fundamental principles that we&#x27;ll use as we contruct the &lt;strong&gt;autodiff&lt;&#x2F;strong&gt; engine for Synapse.&lt;&#x2F;p&gt;
+&lt;p&gt;Till then, sit tight!&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>Hi There</title>
+        <published>2025-06-22T00:00:00+00:00</published>
+        <updated>2025-06-22T00:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io/about/"/>
+        <id>https://vinayakdsci.github.io/about/</id>
+        
+        <content type="html" xml:base="https://vinayakdsci.github.io/about/">&lt;p&gt;I am &lt;strong&gt;Vinayak&lt;&#x2F;strong&gt;, a programmer who loves simple code, compilers, and programming languages.&lt;&#x2F;p&gt;
+&lt;p&gt;I make and break compilers and other low-level stuff, and possess an undying passion for programming languages and their design.&lt;&#x2F;p&gt;
+&lt;p&gt;Outside of fighting with computers, I love mathematics, music, and writing; And to combine all my hobbies into one big project, I also write this blog, where I narrate my adventures with the hope that my ramblings would prove to be of use to those who land on my blog out of curiosity, or who love the same things as I do.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;em&gt;&lt;strong&gt;And&lt;&#x2F;strong&gt;&lt;&#x2F;em&gt;, maybe even those who do not!&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>First Post</title>
+        <published>2025-06-22T00:00:00+00:00</published>
+        <updated>2025-06-22T00:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io/posts/2025-06-22/"/>
+        <id>https://vinayakdsci.github.io/posts/2025-06-22/</id>
+        
+        <content type="html" xml:base="https://vinayakdsci.github.io/posts/2025-06-22/">&lt;p&gt;And thus begins my blog. 1…2…3…&lt;strong&gt;&lt;em&gt;mic testing!&lt;&#x2F;em&gt;&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+</feed>
