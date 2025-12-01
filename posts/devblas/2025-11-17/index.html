@@ -1,0 +1,166 @@
+<!doctype html><html class="dark light" lang=en><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><meta content=https://vinayakdsci.github.io name=base><title>
+            
+                Blog Series: Building a BLAS Library From Scratch
+            
+        </title><meta content="Blog Series: Building a BLAS Library From Scratch" property=og:title><link href=https://vinayakdsci.github.io/fonts.css rel=stylesheet><script src=https://vinayakdsci.github.io/js/codeblock.js></script><script src=https://vinayakdsci.github.io/js/note.js></script><script>MathJax = {
+              tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']]
+              }
+            };</script><script async id=MathJax-script src=https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js></script><link href=https://vinayakdsci.github.io/atom.xml rel=alternate title=vinayakdsci type=application/atom+xml><link href=https://vinayakdsci.github.io/theme/light.css rel=stylesheet><link href=https://vinayakdsci.github.io/theme/dark.css id=darkModeStyle rel=stylesheet><script src=https://vinayakdsci.github.io/js/themetoggle.js></script><script>setTheme(getSavedTheme());</script><link href=https://vinayakdsci.github.io/main.css media=screen rel=stylesheet><script src="https://vinayakdsci.github.io/js/searchElasticlunr.min.js?h=3626c0ef99daa745b31e" defer></script><body><div class=content><header><div class=main><a href=https://vinayakdsci.github.io>vinayakdsci</a><div class=socials><a class=social href=https://linkedin.com/in/vinayakdsci rel=me> <img alt=linkedin src=https://vinayakdsci.github.io/icons/social/linkedin.svg> </a><a class=social href=https://github.com/vinayakdsci/ rel=me> <img alt=github src=https://vinayakdsci.github.io/icons/social/github.svg> </a><a class=social href=/atom.xml rel=me> <img alt=rss src=https://vinayakdsci.github.io/icons/social/rss.svg> </a></div></div><nav><a href=https://vinayakdsci.github.io/about style=margin-left:.25em>About </a><button title="$SHORTCUT to open search" class=search-button id=search-button><img alt=Search class=search-icon src=https://vinayakdsci.github.io/icons/search.svg></button><div class="search-modal js" aria-labelledby=modalTitle id=searchModal role=dialog><div id=modal-content><h1 class=page-header id=modalTitle>Search</h1><div id=searchBar><input aria-controls=results-container aria-expanded=false autocomplete=off id=searchInput placeholder=Search... role=combobox spellcheck=false><button title="Clear search" class=clear-button id=clear-search><svg viewbox="0 -960 960 960" xmlns=http://www.w3.org/2000/svg><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg></button></div><div id=results-container><div id=results-info><span id=zero_results style=display:none>No results</span><span id=one_result style=display:none>1 result</span><span id=many_results style=display:none>$NUMBER results</span></div><div id=results role=listbox></div></div></div></div><a onclick="toggleTheme(); event.preventDefault();" href=# id=dark-mode-toggle> <img alt=Light id=sun-icon src=https://vinayakdsci.github.io/icons/sun.svg style=filter:invert()> <img alt=Dark id=moon-icon src=https://vinayakdsci.github.io/icons/moon.svg> </a><script>updateItemToggleTheme()</script></nav></header><main><article><div class=title><div class=page-header>Blog Series: Building a BLAS Library From Scratch<span class=primary-color style=font-size:1.6em>.</span></div><div class=meta>Posted on <time>2025-11-17</time> :: 719 Words</div></div><section class=body><h3 id=the-motivation>The Motivation</h3><p>For years, I’ve relied on highly optimized BLAS libraries like OpenBLAS, BLIS, and MKL without ever really understanding the machinery inside them.<p>Recently, while working on some multithreaded code, I found myself benchmarking NumPy operations against naive C++ implementations. The results, though not surprising, were drastic enough to trigger a deeper curiosity about how NumPy achieves such speed. We all know NumPy is backed by C, and often links against BLAS libraries like OpenBLAS, but that only raises a more interesting question:<p><strong>What makes a BLAS implementation so much faster than straightforward C++ loops?</strong><p>To find a real answer to that question (not a hand-wavy one), I decided to build a simple (but fully working) BLAS library of my own, which I’m calling <strong><code>devblas</code></strong>.<h3 id=gathering-evidence>Gathering Evidence</h3><p>Of course, claims mean nothing without data, so I also wrote a small benchmarking setup to compare NumPy’s performance against raw C++ loops. The goal isn’t to show off numbers, but to illuminate the motivation behind diving into BLAS internals and to make this announcement a bit more engaging than a plain “I started a new project” post.<blockquote><p>Before we get into the code, I'd like to make some disclaimers: All of these code snippets were implemented and executed on <code>WSL2</code> running on Windows 11, and therefore the results might not be as eye-catching as they would be on a native Linux box or a tuned machine. But the trends will still be relevant and, in my opinion, show a difference enough to prove useful.</blockquote><p>Let's write the C++ naive GEMM (matrix multiplication) first. We start with a basic function called <code>matmul</code> that takes three <code>int</code> pointers, the first two for inputs and the third pointer is the matrix that the results will be written into, alongside <code>M</code>, <code>N</code>, and <code>K</code>, the matrix dims.<p>The code is simple enough to be self explanatory. We essentially iterate in three nested loops and accumulate the results of the multiplication into <code>C</code> in the innermost loop. Here is the function:<pre class=language-cpp data-lang=cpp style=color:#c0c5ce;background-color:#2b303b><code class=language-cpp data-lang=cpp><span style=color:#b48ead>void </span><span style=color:#8fa1b3>matmul</span><span>(</span><span style=color:#b48ead>const int </span><span>*</span><span style=color:#bf616a>A</span><span>, </span><span style=color:#b48ead>const int </span><span>*</span><span style=color:#bf616a>B</span><span>, </span><span style=color:#b48ead>int </span><span>*</span><span style=color:#bf616a>C</span><span>, </span><span style=color:#b48ead>int </span><span style=color:#bf616a>M</span><span>, </span><span style=color:#b48ead>int </span><span style=color:#bf616a>N</span><span>, </span><span style=color:#b48ead>int </span><span style=color:#bf616a>K</span><span>) {
+</span><span>  </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> i = </span><span style=color:#d08770>0</span><span>; i &lt; M; ++i) {
+</span><span>    </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> j = </span><span style=color:#d08770>0</span><span>; j &lt; N; ++j) {
+</span><span>      C[i * N + j] = </span><span style=color:#d08770>0</span><span>;
+</span><span>      </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> k = </span><span style=color:#d08770>0</span><span>; k &lt; K; ++k) {
+</span><span>        C[i * N + j] += A[i * K + k] * B[k * N + j];
+</span><span>      }
+</span><span>    }
+</span><span>  }
+</span><span>}
+</span></code></pre><p>The reasoning is simple: Use the columns as the strides and calculate the offsets to write into. Once we have the relevant offsets, we read the values from <code>A</code> and <code>B</code>, multiply them, and accumulate them in <code>C</code>.<p>But, on it's own, this function gives us nothing! So we'll have to write a <code>main</code> function to actually call it. Here it is:<pre class=language-cpp data-lang=cpp style=color:#c0c5ce;background-color:#2b303b><code class=language-cpp data-lang=cpp><span style=color:#b48ead>int </span><span style=color:#8fa1b3>main</span><span>() {
+</span><span>  </span><span style=color:#b48ead>int</span><span> M = </span><span style=color:#d08770>2000</span><span>;
+</span><span>  </span><span style=color:#b48ead>int</span><span> N = </span><span style=color:#d08770>2000</span><span>;
+</span><span>  </span><span style=color:#b48ead>int</span><span> K = </span><span style=color:#d08770>2000</span><span>;
+</span><span>
+</span><span>  </span><span style=color:#65737e>// Let's use std::vector&lt;int> for simplicity here.
+</span><span>  std::vector&lt;</span><span style=color:#b48ead>int</span><span>> </span><span style=color:#bf616a>A</span><span>(M * K);
+</span><span>  std::vector&lt;</span><span style=color:#b48ead>int</span><span>> </span><span style=color:#bf616a>B</span><span>(K * N);
+</span><span>  std::vector&lt;</span><span style=color:#b48ead>int</span><span>> </span><span style=color:#bf616a>C</span><span>(M * N);
+</span><span>
+</span><span>  </span><span style=color:#65737e>// Fill up the vectors with increasing values.
+</span><span>  </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> i = </span><span style=color:#d08770>0</span><span>; i &lt; M * K; ++i) {
+</span><span>    A[i] = i;
+</span><span>  }
+</span><span>
+</span><span>  </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> i = </span><span style=color:#d08770>0</span><span>; i &lt; K * N; ++i) {
+</span><span>    B[i] = i;
+</span><span>  }
+</span><span>
+</span><span>  Timer t = </span><span style=color:#bf616a>Timer</span><span>();
+</span><span>  </span><span style=color:#bf616a>matmul</span><span>(A.</span><span style=color:#bf616a>data</span><span>(), B.</span><span style=color:#bf616a>data</span><span>(), C.</span><span style=color:#bf616a>data</span><span>(), M, N, K);
+</span><span>
+</span><span>  std::cerr &lt;&lt; std::fixed;
+</span><span>  std::cerr &lt;&lt; "</span><span style=color:#a3be8c>Elapsed time: </span><span>" &lt;&lt; t.</span><span style=color:#bf616a>elapsed</span><span>() &lt;&lt; std::endl;
+</span><span>
+</span><span>  </span><span style=color:#b48ead>return </span><span style=color:#d08770>0</span><span>;
+</span><span>}
+</span></code></pre><p>So essentially, we create two matrices <code>A</code> and <code>B</code>, each of size <code>2000x2000</code>, and initialized the elements from 0 to 2000*2000.<p>Notice a <code>Timer</code> object in the function? Yep, as we don't have a convenient utility like Python's <code>time</code> module, we'll roll our own really simple timer that tells us the time elapsed during the operation.<p>Here is the implementation:<pre class=language-cpp data-lang=cpp style=color:#c0c5ce;background-color:#2b303b><code class=language-cpp data-lang=cpp><span style=color:#b48ead>struct </span><span>Timer {
+</span><span>  </span><span style=color:#8fa1b3>Timer</span><span>() : </span><span style=color:#bf616a>start_</span><span>(std::chrono::steady_clock::</span><span style=color:#bf616a>now</span><span>()) {}
+</span><span>  </span><span style=color:#b48ead>double </span><span style=color:#8fa1b3>elapsed</span><span>() {
+</span><span>    </span><span style=color:#b48ead>using namespace</span><span> std::literals;
+</span><span>    </span><span style=color:#b48ead>auto</span><span> now = std::chrono::steady_clock::</span><span style=color:#bf616a>now</span><span>();
+</span><span>    </span><span style=color:#b48ead>return </span><span>(</span><span style=color:#b48ead>double</span><span>)((now - start_) / </span><span style=color:#d08770>1</span><span style=color:#b48ead>ns</span><span>) * (</span><span style=color:#b48ead>double</span><span>)</span><span style=color:#d08770>1e-6</span><span>;
+</span><span>  }
+</span><span>
+</span><span style=color:#b48ead>private</span><span>:
+</span><span>  std::chrono::time_point&lt;std::chrono::steady_clock> start_;
+</span><span>};
+</span></code></pre><p>So now, our full benchmark code looks like this:<pre class=language-cpp data-lang=cpp style=color:#c0c5ce;background-color:#2b303b><code class=language-cpp data-lang=cpp><span style=color:#b48ead>#include </span><span>&lt;</span><span style=color:#a3be8c>chrono</span><span>>
+</span><span style=color:#b48ead>#include </span><span>&lt;</span><span style=color:#a3be8c>iostream</span><span>>
+</span><span style=color:#b48ead>#include </span><span>&lt;</span><span style=color:#a3be8c>vector</span><span>>
+</span><span>
+</span><span style=color:#b48ead>void </span><span style=color:#8fa1b3>matmul</span><span>(</span><span style=color:#b48ead>const int </span><span>*</span><span style=color:#bf616a>A</span><span>, </span><span style=color:#b48ead>const int </span><span>*</span><span style=color:#bf616a>B</span><span>, </span><span style=color:#b48ead>int </span><span>*</span><span style=color:#bf616a>C</span><span>, </span><span style=color:#b48ead>int </span><span style=color:#bf616a>M</span><span>, </span><span style=color:#b48ead>int </span><span style=color:#bf616a>N</span><span>, </span><span style=color:#b48ead>int </span><span style=color:#bf616a>K</span><span>) {
+</span><span>  </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> i = </span><span style=color:#d08770>0</span><span>; i &lt; M; ++i) {
+</span><span>    </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> j = </span><span style=color:#d08770>0</span><span>; j &lt; N; ++j) {
+</span><span>      C[i * N + j] = </span><span style=color:#d08770>0</span><span>;
+</span><span>      </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> k = </span><span style=color:#d08770>0</span><span>; k &lt; K; ++k) {
+</span><span>        C[i * N + j] += A[i * K + k] * B[k * N + j];
+</span><span>      }
+</span><span>    }
+</span><span>  }
+</span><span>}
+</span><span>
+</span><span style=color:#b48ead>struct </span><span>Timer {
+</span><span>  </span><span style=color:#8fa1b3>Timer</span><span>() : </span><span style=color:#bf616a>start_</span><span>(std::chrono::steady_clock::</span><span style=color:#bf616a>now</span><span>()) {}
+</span><span>  </span><span style=color:#b48ead>double </span><span style=color:#8fa1b3>elapsed</span><span>() {
+</span><span>    </span><span style=color:#b48ead>using namespace</span><span> std::literals;
+</span><span>    </span><span style=color:#b48ead>auto</span><span> now = std::chrono::steady_clock::</span><span style=color:#bf616a>now</span><span>();
+</span><span>    </span><span style=color:#b48ead>return </span><span>(</span><span style=color:#b48ead>double</span><span>)((now - start_) / </span><span style=color:#d08770>1</span><span style=color:#b48ead>ns</span><span>) * (</span><span style=color:#b48ead>double</span><span>)</span><span style=color:#d08770>1e-6</span><span>;
+</span><span>  }
+</span><span>
+</span><span style=color:#b48ead>private</span><span>:
+</span><span>  std::chrono::time_point&lt;std::chrono::steady_clock> start_;
+</span><span>};
+</span><span>
+</span><span style=color:#b48ead>int </span><span style=color:#8fa1b3>main</span><span>() {
+</span><span>  </span><span style=color:#b48ead>int</span><span> M = </span><span style=color:#d08770>2000</span><span>;
+</span><span>  </span><span style=color:#b48ead>int</span><span> N = </span><span style=color:#d08770>2000</span><span>;
+</span><span>  </span><span style=color:#b48ead>int</span><span> K = </span><span style=color:#d08770>2000</span><span>;
+</span><span>
+</span><span>  </span><span style=color:#65737e>// Let's use std::vector&lt;int> for simplicity here.
+</span><span>  std::vector&lt;</span><span style=color:#b48ead>int</span><span>> </span><span style=color:#bf616a>A</span><span>(M * K);
+</span><span>  std::vector&lt;</span><span style=color:#b48ead>int</span><span>> </span><span style=color:#bf616a>B</span><span>(K * N);
+</span><span>  std::vector&lt;</span><span style=color:#b48ead>int</span><span>> </span><span style=color:#bf616a>C</span><span>(M * N);
+</span><span>
+</span><span>  </span><span style=color:#65737e>// Fill up the vectors with increasing values.
+</span><span>  </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> i = </span><span style=color:#d08770>0</span><span>; i &lt; M * K; ++i) {
+</span><span>    A[i] = i;
+</span><span>  }
+</span><span>
+</span><span>  </span><span style=color:#b48ead>for </span><span>(</span><span style=color:#b48ead>int</span><span> i = </span><span style=color:#d08770>0</span><span>; i &lt; K * N; ++i) {
+</span><span>    B[i] = i;
+</span><span>  }
+</span><span>
+</span><span>  Timer t = </span><span style=color:#bf616a>Timer</span><span>();
+</span><span>  </span><span style=color:#bf616a>matmul</span><span>(A.</span><span style=color:#bf616a>data</span><span>(), B.</span><span style=color:#bf616a>data</span><span>(), C.</span><span style=color:#bf616a>data</span><span>(), M, N, K);
+</span><span>
+</span><span>  std::cerr &lt;&lt; std::fixed;
+</span><span>  std::cerr &lt;&lt; "</span><span style=color:#a3be8c>Elapsed time: </span><span>" &lt;&lt; t.</span><span style=color:#bf616a>elapsed</span><span>() &lt;&lt; std::endl;
+</span><span>
+</span><span>  </span><span style=color:#b48ead>return </span><span style=color:#d08770>0</span><span>;
+</span><span>}
+</span></code></pre><p>And that's it! Now to run this, we need to compile the code first, so let's do that.<pre class=language-sh data-lang=sh style=color:#c0c5ce;background-color:#2b303b><code class=language-sh data-lang=sh><span style=color:#bf616a>$</span><span> clang++ naive_sgemm.cc</span><span style=color:#bf616a> -o</span><span> naive_sgemm
+</span></code></pre><p>And on running the binary, something like this should appear (note that the results are in <code>ms</code>):<pre class=language-sh data-lang=sh style=color:#c0c5ce;background-color:#2b303b><code class=language-sh data-lang=sh><span style=color:#bf616a>$</span><span> ./naive_sgemm
+</span><span style=color:#bf616a>Elapsed</span><span> time: 21758.562206
+</span></code></pre><p>The binary took a whooping 21.7 seconds to do a <code>2000x2000</code> GEMM!<p>And now, to compare, we write the same code in Python, only using <code>NumPy</code>. The code is small enough to fit in just one code block.<pre class=language-python data-lang=python style=color:#c0c5ce;background-color:#2b303b><code class=language-python data-lang=python><span style=color:#b48ead>import </span><span>numpy </span><span style=color:#b48ead>as </span><span>np
+</span><span style=color:#b48ead>import </span><span>time
+</span><span>
+</span><span style=color:#b48ead>def </span><span style=color:#8fa1b3>matmul</span><span>(</span><span style=color:#bf616a>A</span><span>: np.ndarray, </span><span style=color:#bf616a>B</span><span>: np.ndarray) -> np.ndarray:
+</span><span>    </span><span style=color:#b48ead>return </span><span>A @ B
+</span><span>
+</span><span>
+</span><span style=color:#b48ead>def </span><span style=color:#8fa1b3>main</span><span>():
+</span><span>    M = </span><span style=color:#d08770>2000
+</span><span>    K = </span><span style=color:#d08770>2000
+</span><span>    N = </span><span style=color:#d08770>2000
+</span><span>
+</span><span>    a = [i </span><span style=color:#b48ead>for </span><span>i </span><span style=color:#b48ead>in </span><span style=color:#96b5b4>range</span><span>(M * K)]
+</span><span>    b = [i </span><span style=color:#b48ead>for </span><span>i </span><span style=color:#b48ead>in </span><span style=color:#96b5b4>range</span><span>(K * N)]
+</span><span>
+</span><span>    A = np.</span><span style=color:#bf616a>array</span><span>(a).</span><span style=color:#bf616a>reshape</span><span>(M, K)
+</span><span>    B = np.</span><span style=color:#bf616a>array</span><span>(b).</span><span style=color:#bf616a>reshape</span><span>(K, N)
+</span><span>
+</span><span>    start = time.</span><span style=color:#bf616a>perf_counter</span><span>()
+</span><span>
+</span><span>    </span><span style=color:#bf616a>_ </span><span>= </span><span style=color:#bf616a>matmul</span><span>(A, B)
+</span><span>
+</span><span>    </span><span style=color:#96b5b4>print</span><span>(</span><span style=color:#b48ead>f</span><span>"</span><span style=color:#a3be8c>Elapsed time: </span><span>{(time.</span><span style=color:#bf616a>perf_counter</span><span>() - start) * </span><span style=color:#d08770>1000:.6f</span><span>}")
+</span><span>
+</span><span>
+</span><span style=color:#b48ead>if </span><span>__name__ == "</span><span style=color:#a3be8c>__main__</span><span>":
+</span><span>    </span><span style=color:#bf616a>main</span><span>()
+</span></code></pre><p>Running this is simple (assuming you have a virtual environment sourced and <code>NumPy</code> installed in it):<pre class=language-sh data-lang=sh style=color:#c0c5ce;background-color:#2b303b><code class=language-sh data-lang=sh><span style=color:#bf616a>$</span><span> python np_sgemm.py
+</span><span style=color:#bf616a>Elapsed</span><span> time: 16247.785098
+</span></code></pre><p>That's a difference of over <strong>5 seconds!!</strong><p>And this is where the idea came from. Just to ensure that my <code>NumPy</code> installation linked to a BLAS library, I ran<pre class=language-sh data-lang=sh style=color:#c0c5ce;background-color:#2b303b><code class=language-sh data-lang=sh><span style=color:#bf616a>$</span><span> python</span><span style=color:#bf616a> -c </span><span>"</span><span style=color:#a3be8c>import numpy; numpy.__config__.show()</span><span>"
+</span></code></pre><p>Which contained this snippet in its output<pre style=color:#c0c5ce;background-color:#2b303b><code><span>"Build Dependencies": {
+</span><span>    "blas": {
+</span><span>      "name": "scipy-openblas",
+</span><span>      "found": true,
+</span><span>      "version": "0.3.30",
+</span><span>      "detection method": "pkgconfig",
+</span><span>      "include directory": "/opt/_internal/cpython-3.12.12/lib/python3.12/site-packages/scipy_openblas64/include",
+</span><span>      "lib directory": "/opt/_internal/cpython-3.12.12/lib/python3.12/site-packages/scipy_openblas64/lib",
+</span><span>      "openblas configuration": "OpenBLAS 0.3.30  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+</span><span>      "pc file directory": "/project/.openblas"
+</span><span>    },
+</span><span>    "lapack": {
+</span><span>      "name": "scipy-openblas",
+</span><span>      "found": true,
+</span><span>      "version": "0.3.30",
+</span><span>      "detection method": "pkgconfig",
+</span><span>      "include directory": "/opt/_internal/cpython-3.12.12/lib/python3.12/site-packages/scipy_openblas64/include",
+</span><span>      "lib directory": "/opt/_internal/cpython-3.12.12/lib/python3.12/site-packages/scipy_openblas64/lib",
+</span><span>      "openblas configuration": "OpenBLAS 0.3.30  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+</span><span>      "pc file directory": "/project/.openblas"
+</span><span>    }
+</span><span>  }
+</span></code></pre><p>indicating that it was linked against <code>OpenBLAS</code> during build.<h3 id=the-conclusion>The Conclusion</h3><p>This was enough evidence to motivate me to write a BLAS implementation. Of course, it shall not be a production level library intended as a drop-in replacement for <code>OpenBLAS</code>, but my target is to take it far enough in an educational context to demonstrate visible performance gains.<p>This, as I mentioned earlier, is rather an announcement post for a series of upcoming posts in which we shall implement the library kernel-by-kernel, starting from <code>SGEMM</code> and following with double precision and more kernels.<p>All the resources I follow or study from I shall link at the relevant time and place.<p>There's more to come, and lots to learn.<p>Till then, sit tight!</section></article></main></div>

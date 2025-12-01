@@ -1,0 +1,391 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+    <title>vinayakdsci - Posts</title>
+    <link rel="self" type="application/atom+xml" href="https://vinayakdsci.github.io/posts/atom.xml"/>
+    <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io/posts/"/>
+    <generator uri="https://www.getzola.org/">Zola</generator>
+    <updated>2025-12-01T00:00:00+00:00</updated>
+    <id>https://vinayakdsci.github.io/posts/atom.xml</id>
+    <entry xml:lang="en">
+        <title>Building BLAS, Part 2: Introducing devblas</title>
+        <published>2025-12-01T00:00:00+00:00</published>
+        <updated>2025-12-01T00:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io/posts/devblas/2025-12-01/"/>
+        <id>https://vinayakdsci.github.io/posts/devblas/2025-12-01/</id>
+        
+        <content type="html" xml:base="https://vinayakdsci.github.io/posts/devblas/2025-12-01/">&lt;h3 id=&quot;why-a-separate-post-to-introduce-the-library&quot;&gt;Why a separate post to introduce the library?&lt;&#x2F;h3&gt;
+&lt;p&gt;In the previous post in the BLAS series, we looked at how &lt;code&gt;NumPy&lt;&#x2F;code&gt; significantly outperformed a naive &lt;code&gt;IJK&lt;&#x2F;code&gt; ordered three-loop C++ implementation on the same matrix sizes.
+The post was an announcement for both the blog series and the library we will implement as the series progresses.
+Over the past two weeks, I spent some time setting up the library and plugging in our naive C++ implementation into the codebase.&lt;&#x2F;p&gt;
+&lt;p&gt;However, the efforts resulted in a codebase that has now become large enough to deserve its own introduction post, so that you do not feel lost when I use code from the library to demonstrate the concepts we will discuss in upcoming posts.&lt;&#x2F;p&gt;
+&lt;p&gt;In its entirety, the library at the moment consists of a naive &lt;code&gt;IJK&lt;&#x2F;code&gt; ordered IGEMM&#x2F;SGEMM implementation exposed via C, but internally implemented in C++ so that we can use templates
+to write reusable code. I have deliberately avoided the use of classes and other OOP constructs to avoid runtime overhead, and I expose the API in C to maintain a stable ABI.&lt;&#x2F;p&gt;
+&lt;p&gt;The library also provides a generic benchmarking harness (which we&#x27;ll use a lot) that allows the user to pass in a function pointer to their own implementation of a GEMM for
+benchmarking, as long as it follows the specified function signature.&lt;&#x2F;p&gt;
+&lt;p&gt;So, to avoid cluttering other posts with implementation details from the library, I decided to write an intro to it. In this post, we&#x27;ll discuss the implementation and design details,
+and how to use it to benchmark your own experimental kernels.&lt;&#x2F;p&gt;
+&lt;p&gt;The library lives &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vinayakdsci&#x2F;devblas&quot;&gt;here on Github&lt;&#x2F;a&gt;. The README will have instructions on building, but I will very quickly give a brief overview.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;building-and-linking&quot;&gt;Building and linking&lt;&#x2F;h3&gt;
+&lt;p&gt;Let&#x27;s say that you&#x27;ve cloned the repository to &lt;code&gt;~&#x2F;devblas&lt;&#x2F;code&gt; (a simple git clone in the home dir).&lt;&#x2F;p&gt;
+&lt;p&gt;Here&#x27;s a quick overview before we move into the internal details. (These instructions are also there on the repository README, I am just repeating here for completeness).&lt;&#x2F;p&gt;
+&lt;p&gt;To build, we&#x27;ll first have to generate the build files with CMake and then run the build command. I recommend having a recent enough version of CMake and Ninja installed.
+To build, run CMake in the top-level of the repository.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;sh&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-sh &quot;&gt;&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; cmake&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; -S&lt;&#x2F;span&gt;&lt;span&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; -Bbuild -GNinja -DCMAKE_C_COMPILER&lt;&#x2F;span&gt;&lt;span&gt;=clang \
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;  -DCMAKE_CXX_COMPILER&lt;&#x2F;span&gt;&lt;span&gt;=clang++&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; -DCMAKE_BUILD_TYPE&lt;&#x2F;span&gt;&lt;span&gt;=Release \
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;  -DCMAKE_INSTALL_PREFIX&lt;&#x2F;span&gt;&lt;span&gt;=devblas_libs
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;You can plug in your own C and C++ compilers here. I mainly use Clang on WSL, so I specify it in the command.
+Now let&#x27;s build the source.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;sh&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-sh &quot;&gt;&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; cmake&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; --build&lt;&#x2F;span&gt;&lt;span&gt; build &amp;amp;&amp;amp; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;cmake --install&lt;&#x2F;span&gt;&lt;span&gt; build
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;This will build the code, produce a &lt;code&gt;.so&lt;&#x2F;code&gt; file, and install the library under &lt;code&gt;devblas_libs&#x2F;devblas&lt;&#x2F;code&gt; in the source root.&lt;&#x2F;p&gt;
+&lt;p&gt;To link a &lt;code&gt;C&lt;&#x2F;code&gt; file with the &lt;code&gt;.so&lt;&#x2F;code&gt; file, compile the file like this (from the repository root):&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;sh&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-sh &quot;&gt;&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; clang test.c&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; -o&lt;&#x2F;span&gt;&lt;span&gt; test&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; -Iinclude -Ldevblas_libs -ldevblas
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;To run the &lt;code&gt;test&lt;&#x2F;code&gt; binary, preload the shared object file and invoke the executable.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;sh&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-sh &quot;&gt;&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; LD_PRELOAD=devblas_libs&#x2F;devblas&#x2F;libdevblas.so .&#x2F;test
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;To make the experimentation process easier, I&#x27;ve provided an example file called &lt;code&gt;bench_driver.c&lt;&#x2F;code&gt; in the top-level.
+It will automatically link with the produced &lt;code&gt;.so&lt;&#x2F;code&gt; file, so you won&#x27;t have to go through the hassle of linking manually.
+To enable compilation of &lt;code&gt;bench_driver.c&lt;&#x2F;code&gt;, add &lt;code&gt;-DDEVBLAS_BUILD_BENCH=ON&lt;&#x2F;code&gt; to the CMake command, and it should produce a binary called &lt;code&gt;bench_driver&lt;&#x2F;code&gt; in the build dir.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;sh&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-sh &quot;&gt;&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; cmake&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; -S&lt;&#x2F;span&gt;&lt;span&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; -Bbuild -GNinja -DCMAKE_C_COMPILER&lt;&#x2F;span&gt;&lt;span&gt;=clang \
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;  -DCMAKE_CXX_COMPILER&lt;&#x2F;span&gt;&lt;span&gt;=clang++ \
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;  -DCMAKE_BUILD_TYPE&lt;&#x2F;span&gt;&lt;span&gt;=Release \
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;  -DDEVBLAS_BUILD_BENCH&lt;&#x2F;span&gt;&lt;span&gt;=ON
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; build&#x2F;bench_driver
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;naive_gemm_ijk_driver:
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Average&lt;&#x2F;span&gt;&lt;span&gt; GFLOP&#x2F;s: 0.601536
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;naive_gemm_ijk_driver:
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Average&lt;&#x2F;span&gt;&lt;span&gt; GFLOP&#x2F;s: 0.611877
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h3 id=&quot;the-benchmarking-harness&quot;&gt;The Benchmarking Harness&lt;&#x2F;h3&gt;
+&lt;p&gt;The benchmarking harness is a crucial feature of the library, because we will make extensive use of it to benchmark our kernel implementations as we progress with the series.
+Internal details are irrelevant to this post (we shall always use the C bindings, so it is much easier to just read the internal details on Github), so we will omit them here.&lt;&#x2F;p&gt;
+&lt;p&gt;The benchmarking harness provides two benchmarking functions, called &lt;code&gt;bench_igemm(...)&lt;&#x2F;code&gt; for IGEMMs and &lt;code&gt;bench_sgemm(...)&lt;&#x2F;code&gt; for SGEMMs.&lt;&#x2F;p&gt;
+&lt;p&gt;Let&#x27;s look at the &lt;code&gt;bench_driver.c&lt;&#x2F;code&gt; file to see how they&#x27;re used.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;c&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-c &quot;&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;#include &lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;devblas&#x2F;c_api&#x2F;blas.h&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;#include &lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;assert.h&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;#include &lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;stdio.h&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;main&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;void&lt;&#x2F;span&gt;&lt;span&gt;) {
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;bench_igemm&lt;&#x2F;span&gt;&lt;span&gt;(naive_igemm_ijk, &amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;naive_gemm_ijk_driver&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;3&lt;&#x2F;span&gt;&lt;span&gt;,
+&lt;&#x2F;span&gt;&lt;span&gt;              DEVBLAS_LAYOUT_ROW_MAJOR, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;);
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;bench_sgemm&lt;&#x2F;span&gt;&lt;span&gt;(naive_sgemm_ijk, &amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;naive_gemm_ijk_driver&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;3&lt;&#x2F;span&gt;&lt;span&gt;,
+&lt;&#x2F;span&gt;&lt;span&gt;              DEVBLAS_LAYOUT_COLUMN_MAJOR, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1024&lt;&#x2F;span&gt;&lt;span&gt;);
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Both the functions follow a very similar signature, differing only in the data types of the matrices. We&#x27;ll just talk about &lt;code&gt;bench_sgemm(...)&lt;&#x2F;code&gt; from now, and everything should apply to &lt;code&gt;bench_igemm(...)&lt;&#x2F;code&gt; as well.&lt;&#x2F;p&gt;
+&lt;p&gt;The first argument is a function pointer, &lt;code&gt;naive_sgemm_ijk&lt;&#x2F;code&gt;. It points to our implementation of the naive SGEMM that we called &lt;code&gt;matmul()&lt;&#x2F;code&gt; in the previous post.
+Its signature is:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;c&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-c &quot;&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;void &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;naive_sgemm_ijk&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;devblas_layout_t&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;const float &lt;&#x2F;span&gt;&lt;span&gt;*, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;const float &lt;&#x2F;span&gt;&lt;span&gt;*, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;float &lt;&#x2F;span&gt;&lt;span&gt;*,
+&lt;&#x2F;span&gt;&lt;span&gt;                     &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;);
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;It takes a layout (we&#x27;ll talk about that very soon), pointers to the input matrices, pointer to the output matrix, the integers &lt;code&gt;M&lt;&#x2F;code&gt;, &lt;code&gt;N&lt;&#x2F;code&gt;, &lt;code&gt;K&lt;&#x2F;code&gt;,
+(the matrix dimensions), and &lt;code&gt;lda&lt;&#x2F;code&gt;, &lt;code&gt;ldb&lt;&#x2F;code&gt;, &lt;code&gt;ldc&lt;&#x2F;code&gt; (the leading dimensions, which I&#x27;ll get to very soon too).&lt;&#x2F;p&gt;
+&lt;p&gt;The second argument to the benchmark function is the name of the benchmark that makes it easier to understand the logging. It defaults to &lt;code&gt;default_naive_sgemm&lt;&#x2F;code&gt; if the value is &lt;code&gt;NULL&lt;&#x2F;code&gt;.
+Third argument is the number of warmup iterations to run so that we are not timing cold runs, and following that is the number of iterations to actually run and measure.
+The rest of the arguments are just values that the &lt;code&gt;naive_sgemm_ijk&lt;&#x2F;code&gt; function will accept, so that the harness can run it with the correct arguments.&lt;&#x2F;p&gt;
+&lt;p&gt;Let&#x27;s write a very simple example &quot;kernel&quot; and plug that into the benchmark function.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;c&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-c &quot;&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;#include &lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;devblas&#x2F;c_api&#x2F;blas.h&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;#include &lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;stdio.h&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;void &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;my_experimental_kernel&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;devblas_layout_t&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;const float &lt;&#x2F;span&gt;&lt;span&gt;*, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;const float &lt;&#x2F;span&gt;&lt;span&gt;*, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;float &lt;&#x2F;span&gt;&lt;span&gt;*,
+&lt;&#x2F;span&gt;&lt;span&gt;                            &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;) {
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#96b5b4;&quot;&gt;printf&lt;&#x2F;span&gt;&lt;span&gt;(&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;Hello, World!&lt;&#x2F;span&gt;&lt;span style=&quot;color:#96b5b4;&quot;&gt;\n&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;);
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;main&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;void&lt;&#x2F;span&gt;&lt;span&gt;) {
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;bench_sgemm&lt;&#x2F;span&gt;&lt;span&gt;(my_experimental_kernel, &amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;my_experimental_kernel&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;10&lt;&#x2F;span&gt;&lt;span&gt;,
+&lt;&#x2F;span&gt;&lt;span&gt;              DEVBLAS_LAYOUT_ROW_MAJOR, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;);
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;In this example, we are just printing &quot;Hello, World!&quot; in our kernel, and telling the benchmark function to not warmup and run this function 10 times.
+Matrix sizes and leading dimensions (what we called &lt;code&gt;lda&lt;&#x2F;code&gt;, &lt;code&gt;ldb&lt;&#x2F;code&gt; and &lt;code&gt;ldc&lt;&#x2F;code&gt;) are all &lt;code&gt;0&lt;&#x2F;code&gt; so that we don&#x27;t allocate any matrices inside the benchmark function.&lt;&#x2F;p&gt;
+&lt;p&gt;This outputs something like this:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#2b303b;color:#c0c5ce;&quot;&gt;&lt;code&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;Hello, World!
+&lt;&#x2F;span&gt;&lt;span&gt;my_experimental_kernel:
+&lt;&#x2F;span&gt;&lt;span&gt;        Average GFLOP&#x2F;s: -nan
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;The function got called 10 times, as we expected, and gave &lt;code&gt;-nan&lt;&#x2F;code&gt; as the average GFLOP&#x2F;s count. That&#x27;s expected, we didn&#x27;t give it anything to compute.&lt;&#x2F;p&gt;
+&lt;p&gt;For a legitimate kernel function, it will produce a valid GFLOP&#x2F;s value that should give a fair idea of what slows down a kernel and what speeds it up.&lt;&#x2F;p&gt;
+&lt;p&gt;That is all we need to know about benchmarking for now. Let&#x27;s move to...&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;layout&quot;&gt;Layout&lt;&#x2F;h3&gt;
+&lt;p&gt;In general, no reasonable library will represent a matrix as a 2-D nested array. In general, matrices are stored as 1-D arrays, and we use the concept of strides to calculate which index in the 1-D array
+maps to the required index in 2-D.&lt;&#x2F;p&gt;
+&lt;p&gt;Now, anyone familiar with C or C++ will think of a 2-D matrix as a collection of multiple row arrays. However, initial BLAS implementations and Fortran, which was (and still is) heavily used for scientific computing,
+represented 2-D matrices in a column-major order. So instead of traversing the rows first, you traverse the columns first.&lt;&#x2F;p&gt;
+&lt;p&gt;In a setup that stores matrices as 1-D arrays, we can easily change our access pattern to switch between a row-major (as we have it in C, arrays of rows) or a column-major (as we have it in Fortran, array of columns) layout.&lt;&#x2F;p&gt;
+&lt;p&gt;Let&#x27;s consider the following matrix:
+$$ \begin{pmatrix} a &amp;amp; b \\ c &amp;amp; d \end{pmatrix} $$&lt;&#x2F;p&gt;
+&lt;p&gt;In a row-major format, the stored 1-D array would look like this
+$$ \begin{bmatrix} a &amp;amp; b &amp;amp; c &amp;amp; d \end{bmatrix} $$&lt;&#x2F;p&gt;
+&lt;p&gt;So when you access the next element, it is either the next one in this row, or the first element in the &lt;em&gt;next&lt;&#x2F;em&gt; row.&lt;&#x2F;p&gt;
+&lt;p&gt;However, in a column-major layout, we would walk the matrix column first, something like this:
+$$ \begin{bmatrix} a &amp;amp; c &amp;amp; b &amp;amp; d \end{bmatrix} $$
+so that &lt;code&gt;c&lt;&#x2F;code&gt; (just below &lt;code&gt;a&lt;&#x2F;code&gt;) becomes the element next to &lt;code&gt;a&lt;&#x2F;code&gt; in the 1-D array.&lt;&#x2F;p&gt;
+&lt;p&gt;That is what layouts do. They just change the storage and access pattern of the 1-D array that represents the 2-D matrix.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;leading-dimensions&quot;&gt;Leading dimensions&lt;&#x2F;h3&gt;
+&lt;p&gt;Another thing that we kept for later was the concept of leading dimensions (referred to as &lt;code&gt;lda&lt;&#x2F;code&gt;, &lt;code&gt;ldb&lt;&#x2F;code&gt;, &lt;code&gt;ldc&lt;&#x2F;code&gt;) above.&lt;&#x2F;p&gt;
+&lt;p&gt;Now, it is not always necessary that we will want to multiply the whole matrix in one go. There is a very high probability that you might need to multiply &lt;strong&gt;submatrices&lt;&#x2F;strong&gt;,
+and that is exactly what leading dimensions do.&lt;&#x2F;p&gt;
+&lt;p&gt;Let&#x27;s extend the matrix we wrote above to a larger &lt;code&gt;3x3&lt;&#x2F;code&gt; size
+$$ \begin{pmatrix} a &amp;amp; b &amp;amp; c \\ d &amp;amp; e &amp;amp; f \\ g &amp;amp; h &amp;amp; i \end{pmatrix} $$&lt;&#x2F;p&gt;
+&lt;p&gt;Now let&#x27;s say we have another matrix of the same size, but we don&#x27;t want to multiply the whole matrix. Suppose we want to multiply the top left &lt;code&gt;2x2&lt;&#x2F;code&gt; submatrix.
+$$ S = \begin{pmatrix} a &amp;amp; b \\ d &amp;amp; e \end{pmatrix} $$&lt;&#x2F;p&gt;
+&lt;p&gt;Assuming a row-major layout, we pass in the dimensions of the submatrix, &lt;code&gt;M=2&lt;&#x2F;code&gt;, &lt;code&gt;N=2&lt;&#x2F;code&gt;, &lt;code&gt;K=2&lt;&#x2F;code&gt; into the GEMM function. However, our matrices are &lt;em&gt;not&lt;&#x2F;em&gt; &lt;code&gt;2x2&lt;&#x2F;code&gt; in size, they are &lt;code&gt;3x3&lt;&#x2F;code&gt;.
+Therefore, to actually land on the first element of the next &lt;em&gt;logical&lt;&#x2F;em&gt; row, we pass in a leading dimension of &lt;code&gt;3&lt;&#x2F;code&gt; for both the input matrices.&lt;&#x2F;p&gt;
+&lt;p&gt;This means that we&#x27;ll access first &lt;code&gt;K&lt;&#x2F;code&gt; successive elements for each row for first matrix of size &lt;code&gt;MxK&lt;&#x2F;code&gt;, and the moment we cross &lt;code&gt;K&lt;&#x2F;code&gt;, we move from the end of this &lt;em&gt;logical&lt;&#x2F;em&gt; row to the start of the next one by skipping &lt;code&gt;(lda - K)&lt;&#x2F;code&gt; elements.
+Accessing the elements requires us to compute the stride, which means how many elements we need to jump to reach the first element of row $R+1$ from the first element of row $R$.&lt;&#x2F;p&gt;
+&lt;p&gt;And leading dimensions are exactly that: the stride values used when operating on submatrices.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;closing-comments&quot;&gt;Closing comments&lt;&#x2F;h3&gt;
+&lt;p&gt;This was a text-heavy post, but it was necessary to introduce you to the architecture of the library, because I will be using it heavily in the upcoming posts.&lt;&#x2F;p&gt;
+&lt;p&gt;I did not want to clutter subsequent posts (which will be theory- and visualization-heavy) with library implementation details, and it seemed better to introduce them before
+we start on that kind of stuff and you get lost in the clutter.&lt;&#x2F;p&gt;
+&lt;p&gt;I&#x27;ll introduce the memory hierarchy, cache behavior, and locality in the next post, and we&#x27;ll modify our naive GEMM kernel and benchmark the modifications as we discuss the concepts, so that we can observe their effects.&lt;&#x2F;p&gt;
+&lt;p&gt;The next post will be out in a while. Stay tuned!&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>Blog Series: Building a BLAS Library From Scratch</title>
+        <published>2025-11-17T00:00:00+00:00</published>
+        <updated>2025-11-17T00:00:00+00:00</updated>
+        
+        <author>
+          <name>
+            
+              Unknown
+            
+          </name>
+        </author>
+        
+        <link rel="alternate" type="text/html" href="https://vinayakdsci.github.io/posts/devblas/2025-11-17/"/>
+        <id>https://vinayakdsci.github.io/posts/devblas/2025-11-17/</id>
+        
+        <content type="html" xml:base="https://vinayakdsci.github.io/posts/devblas/2025-11-17/">&lt;h3 id=&quot;the-motivation&quot;&gt;The Motivation&lt;&#x2F;h3&gt;
+&lt;p&gt;For years, I’ve relied on highly optimized BLAS libraries like OpenBLAS, BLIS, and MKL without ever really understanding the machinery inside them.&lt;&#x2F;p&gt;
+&lt;p&gt;Recently, while working on some multithreaded code, I found myself benchmarking NumPy operations against naive C++ implementations. The results, though not surprising, were drastic enough to trigger a deeper curiosity about how NumPy achieves such speed. We all know NumPy is backed by C, and often links against BLAS libraries like OpenBLAS, but that only raises a more interesting question:&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;What makes a BLAS implementation so much faster than straightforward C++ loops?&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;To find a real answer to that question (not a hand-wavy one), I decided to build a simple (but fully working) BLAS library of my own, which I’m calling &lt;strong&gt;&lt;code&gt;devblas&lt;&#x2F;code&gt;&lt;&#x2F;strong&gt;.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;gathering-evidence&quot;&gt;Gathering Evidence&lt;&#x2F;h3&gt;
+&lt;p&gt;Of course, claims mean nothing without data, so I also wrote a small benchmarking setup to compare NumPy’s performance against raw C++ loops. The goal isn’t to show off numbers, but to illuminate the motivation behind diving into BLAS internals and to make this announcement a bit more engaging than a plain “I started a new project” post.&lt;&#x2F;p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Before we get into the code, I&#x27;d like to make some disclaimers:
+All of these code snippets were implemented and executed on &lt;code&gt;WSL2&lt;&#x2F;code&gt; running on Windows 11, and therefore the results might not be as eye-catching as they would be on a native Linux box or a tuned machine. But the trends will still be relevant and, in my opinion, show a difference enough to prove useful.&lt;&#x2F;p&gt;
+&lt;&#x2F;blockquote&gt;
+&lt;p&gt;Let&#x27;s write the C++ naive GEMM (matrix multiplication) first.
+We start with a basic function called &lt;code&gt;matmul&lt;&#x2F;code&gt; that takes three &lt;code&gt;int&lt;&#x2F;code&gt; pointers, the first two for inputs and the third pointer is the matrix that the results will be written into, alongside &lt;code&gt;M&lt;&#x2F;code&gt;, &lt;code&gt;N&lt;&#x2F;code&gt;, and &lt;code&gt;K&lt;&#x2F;code&gt;, the matrix dims.&lt;&#x2F;p&gt;
+&lt;p&gt;The code is simple enough to be self explanatory. We essentially iterate in three nested loops and accumulate the results of the multiplication into &lt;code&gt;C&lt;&#x2F;code&gt; in the innermost loop. Here is the function:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;cpp&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-cpp &quot;&gt;&lt;code class=&quot;language-cpp&quot; data-lang=&quot;cpp&quot;&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;void &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;matmul&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;const int &lt;&#x2F;span&gt;&lt;span&gt;*&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;A&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;const int &lt;&#x2F;span&gt;&lt;span&gt;*&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;B&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span&gt;*&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;C&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;M&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;N&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;K&lt;&#x2F;span&gt;&lt;span&gt;) {
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; i = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; i &amp;lt; M; ++i) {
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; j = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; j &amp;lt; N; ++j) {
+&lt;&#x2F;span&gt;&lt;span&gt;      C[i * N + j] = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;      &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; k = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; k &amp;lt; K; ++k) {
+&lt;&#x2F;span&gt;&lt;span&gt;        C[i * N + j] += A[i * K + k] * B[k * N + j];
+&lt;&#x2F;span&gt;&lt;span&gt;      }
+&lt;&#x2F;span&gt;&lt;span&gt;    }
+&lt;&#x2F;span&gt;&lt;span&gt;  }
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;The reasoning is simple: Use the columns as the strides and calculate the offsets to write into. Once we have the relevant offsets, we read the values from &lt;code&gt;A&lt;&#x2F;code&gt; and &lt;code&gt;B&lt;&#x2F;code&gt;, multiply them, and accumulate them in &lt;code&gt;C&lt;&#x2F;code&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;But, on it&#x27;s own, this function gives us nothing! So we&#x27;ll have to write a &lt;code&gt;main&lt;&#x2F;code&gt; function to actually call it.
+Here it is:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;cpp&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-cpp &quot;&gt;&lt;code class=&quot;language-cpp&quot; data-lang=&quot;cpp&quot;&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;main&lt;&#x2F;span&gt;&lt;span&gt;() {
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; M = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;2000&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; N = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;2000&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; K = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;2000&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#65737e;&quot;&gt;&#x2F;&#x2F; Let&amp;#39;s use std::vector&amp;lt;int&amp;gt; for simplicity here.
+&lt;&#x2F;span&gt;&lt;span&gt;  std::vector&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;A&lt;&#x2F;span&gt;&lt;span&gt;(M * K);
+&lt;&#x2F;span&gt;&lt;span&gt;  std::vector&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;B&lt;&#x2F;span&gt;&lt;span&gt;(K * N);
+&lt;&#x2F;span&gt;&lt;span&gt;  std::vector&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;C&lt;&#x2F;span&gt;&lt;span&gt;(M * N);
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#65737e;&quot;&gt;&#x2F;&#x2F; Fill up the vectors with increasing values.
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; i = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; i &amp;lt; M * K; ++i) {
+&lt;&#x2F;span&gt;&lt;span&gt;    A[i] = i;
+&lt;&#x2F;span&gt;&lt;span&gt;  }
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; i = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; i &amp;lt; K * N; ++i) {
+&lt;&#x2F;span&gt;&lt;span&gt;    B[i] = i;
+&lt;&#x2F;span&gt;&lt;span&gt;  }
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  Timer t = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Timer&lt;&#x2F;span&gt;&lt;span&gt;();
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;matmul&lt;&#x2F;span&gt;&lt;span&gt;(A.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span&gt;(), B.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span&gt;(), C.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span&gt;(), M, N, K);
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  std::cerr &amp;lt;&amp;lt; std::fixed;
+&lt;&#x2F;span&gt;&lt;span&gt;  std::cerr &amp;lt;&amp;lt; &amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;Elapsed time: &lt;&#x2F;span&gt;&lt;span&gt;&amp;quot; &amp;lt;&amp;lt; t.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;elapsed&lt;&#x2F;span&gt;&lt;span&gt;() &amp;lt;&amp;lt; std::endl;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;So essentially, we create two matrices &lt;code&gt;A&lt;&#x2F;code&gt; and &lt;code&gt;B&lt;&#x2F;code&gt;, each of size &lt;code&gt;2000x2000&lt;&#x2F;code&gt;, and initialized the elements from 0 to 2000*2000.&lt;&#x2F;p&gt;
+&lt;p&gt;Notice a &lt;code&gt;Timer&lt;&#x2F;code&gt; object in the function? Yep, as we don&#x27;t have a convenient utility like Python&#x27;s &lt;code&gt;time&lt;&#x2F;code&gt; module, we&#x27;ll roll our own really simple timer that tells us the time elapsed during the operation.&lt;&#x2F;p&gt;
+&lt;p&gt;Here is the implementation:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;cpp&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-cpp &quot;&gt;&lt;code class=&quot;language-cpp&quot; data-lang=&quot;cpp&quot;&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;struct &lt;&#x2F;span&gt;&lt;span&gt;Timer {
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;Timer&lt;&#x2F;span&gt;&lt;span&gt;() : &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;start_&lt;&#x2F;span&gt;&lt;span&gt;(std::chrono::steady_clock::&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;now&lt;&#x2F;span&gt;&lt;span&gt;()) {}
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;double &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;elapsed&lt;&#x2F;span&gt;&lt;span&gt;() {
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;using namespace&lt;&#x2F;span&gt;&lt;span&gt; std::literals;
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;auto&lt;&#x2F;span&gt;&lt;span&gt; now = std::chrono::steady_clock::&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;now&lt;&#x2F;span&gt;&lt;span&gt;();
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;double&lt;&#x2F;span&gt;&lt;span&gt;)((now - start_) &#x2F; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;ns&lt;&#x2F;span&gt;&lt;span&gt;) * (&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;double&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1e-6&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;  }
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;private&lt;&#x2F;span&gt;&lt;span&gt;:
+&lt;&#x2F;span&gt;&lt;span&gt;  std::chrono::time_point&amp;lt;std::chrono::steady_clock&amp;gt; start_;
+&lt;&#x2F;span&gt;&lt;span&gt;};
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;So now, our full benchmark code looks like this:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;cpp&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-cpp &quot;&gt;&lt;code class=&quot;language-cpp&quot; data-lang=&quot;cpp&quot;&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;#include &lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;chrono&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;#include &lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;iostream&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;#include &lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;vector&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;void &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;matmul&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;const int &lt;&#x2F;span&gt;&lt;span&gt;*&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;A&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;const int &lt;&#x2F;span&gt;&lt;span&gt;*&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;B&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span&gt;*&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;C&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;M&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;N&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;K&lt;&#x2F;span&gt;&lt;span&gt;) {
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; i = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; i &amp;lt; M; ++i) {
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; j = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; j &amp;lt; N; ++j) {
+&lt;&#x2F;span&gt;&lt;span&gt;      C[i * N + j] = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;      &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; k = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; k &amp;lt; K; ++k) {
+&lt;&#x2F;span&gt;&lt;span&gt;        C[i * N + j] += A[i * K + k] * B[k * N + j];
+&lt;&#x2F;span&gt;&lt;span&gt;      }
+&lt;&#x2F;span&gt;&lt;span&gt;    }
+&lt;&#x2F;span&gt;&lt;span&gt;  }
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;struct &lt;&#x2F;span&gt;&lt;span&gt;Timer {
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;Timer&lt;&#x2F;span&gt;&lt;span&gt;() : &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;start_&lt;&#x2F;span&gt;&lt;span&gt;(std::chrono::steady_clock::&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;now&lt;&#x2F;span&gt;&lt;span&gt;()) {}
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;double &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;elapsed&lt;&#x2F;span&gt;&lt;span&gt;() {
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;using namespace&lt;&#x2F;span&gt;&lt;span&gt; std::literals;
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;auto&lt;&#x2F;span&gt;&lt;span&gt; now = std::chrono::steady_clock::&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;now&lt;&#x2F;span&gt;&lt;span&gt;();
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;double&lt;&#x2F;span&gt;&lt;span&gt;)((now - start_) &#x2F; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;ns&lt;&#x2F;span&gt;&lt;span&gt;) * (&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;double&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1e-6&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;  }
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;private&lt;&#x2F;span&gt;&lt;span&gt;:
+&lt;&#x2F;span&gt;&lt;span&gt;  std::chrono::time_point&amp;lt;std::chrono::steady_clock&amp;gt; start_;
+&lt;&#x2F;span&gt;&lt;span&gt;};
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;main&lt;&#x2F;span&gt;&lt;span&gt;() {
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; M = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;2000&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; N = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;2000&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; K = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;2000&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#65737e;&quot;&gt;&#x2F;&#x2F; Let&amp;#39;s use std::vector&amp;lt;int&amp;gt; for simplicity here.
+&lt;&#x2F;span&gt;&lt;span&gt;  std::vector&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;A&lt;&#x2F;span&gt;&lt;span&gt;(M * K);
+&lt;&#x2F;span&gt;&lt;span&gt;  std::vector&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;B&lt;&#x2F;span&gt;&lt;span&gt;(K * N);
+&lt;&#x2F;span&gt;&lt;span&gt;  std::vector&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;C&lt;&#x2F;span&gt;&lt;span&gt;(M * N);
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#65737e;&quot;&gt;&#x2F;&#x2F; Fill up the vectors with increasing values.
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; i = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; i &amp;lt; M * K; ++i) {
+&lt;&#x2F;span&gt;&lt;span&gt;    A[i] = i;
+&lt;&#x2F;span&gt;&lt;span&gt;  }
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt; i = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;; i &amp;lt; K * N; ++i) {
+&lt;&#x2F;span&gt;&lt;span&gt;    B[i] = i;
+&lt;&#x2F;span&gt;&lt;span&gt;  }
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  Timer t = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Timer&lt;&#x2F;span&gt;&lt;span&gt;();
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;matmul&lt;&#x2F;span&gt;&lt;span&gt;(A.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span&gt;(), B.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span&gt;(), C.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span&gt;(), M, N, K);
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  std::cerr &amp;lt;&amp;lt; std::fixed;
+&lt;&#x2F;span&gt;&lt;span&gt;  std::cerr &amp;lt;&amp;lt; &amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;Elapsed time: &lt;&#x2F;span&gt;&lt;span&gt;&amp;quot; &amp;lt;&amp;lt; t.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;elapsed&lt;&#x2F;span&gt;&lt;span&gt;() &amp;lt;&amp;lt; std::endl;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;And that&#x27;s it! Now to run this, we need to compile the code first, so let&#x27;s do that.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;sh&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-sh &quot;&gt;&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; clang++ naive_sgemm.cc&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; -o&lt;&#x2F;span&gt;&lt;span&gt; naive_sgemm
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;And on running the binary, something like this should appear (note that the results are in &lt;code&gt;ms&lt;&#x2F;code&gt;):&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;sh&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-sh &quot;&gt;&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; .&#x2F;naive_sgemm
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Elapsed&lt;&#x2F;span&gt;&lt;span&gt; time: 21758.562206
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;The binary took a whooping 21.7 seconds to do a &lt;code&gt;2000x2000&lt;&#x2F;code&gt; GEMM!&lt;&#x2F;p&gt;
+&lt;p&gt;And now, to compare, we write the same code in Python, only using &lt;code&gt;NumPy&lt;&#x2F;code&gt;. The code is small enough to fit in just one code block.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;python&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-python &quot;&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;import &lt;&#x2F;span&gt;&lt;span&gt;numpy &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span&gt;np
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;import &lt;&#x2F;span&gt;&lt;span&gt;time
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;matmul&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;A&lt;&#x2F;span&gt;&lt;span&gt;: np.ndarray, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;B&lt;&#x2F;span&gt;&lt;span&gt;: np.ndarray) -&amp;gt; np.ndarray:
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;A @ B
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#8fa1b3;&quot;&gt;main&lt;&#x2F;span&gt;&lt;span&gt;():
+&lt;&#x2F;span&gt;&lt;span&gt;    M = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;2000
+&lt;&#x2F;span&gt;&lt;span&gt;    K = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;2000
+&lt;&#x2F;span&gt;&lt;span&gt;    N = &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;2000
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;    a = [i &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;i &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;in &lt;&#x2F;span&gt;&lt;span style=&quot;color:#96b5b4;&quot;&gt;range&lt;&#x2F;span&gt;&lt;span&gt;(M * K)]
+&lt;&#x2F;span&gt;&lt;span&gt;    b = [i &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;for &lt;&#x2F;span&gt;&lt;span&gt;i &lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;in &lt;&#x2F;span&gt;&lt;span style=&quot;color:#96b5b4;&quot;&gt;range&lt;&#x2F;span&gt;&lt;span&gt;(K * N)]
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;    A = np.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;array&lt;&#x2F;span&gt;&lt;span&gt;(a).&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;reshape&lt;&#x2F;span&gt;&lt;span&gt;(M, K)
+&lt;&#x2F;span&gt;&lt;span&gt;    B = np.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;array&lt;&#x2F;span&gt;&lt;span&gt;(b).&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;reshape&lt;&#x2F;span&gt;&lt;span&gt;(K, N)
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;    start = time.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;perf_counter&lt;&#x2F;span&gt;&lt;span&gt;()
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;_ &lt;&#x2F;span&gt;&lt;span&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;matmul&lt;&#x2F;span&gt;&lt;span&gt;(A, B)
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#96b5b4;&quot;&gt;print&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;f&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;Elapsed time: &lt;&#x2F;span&gt;&lt;span&gt;{(time.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;perf_counter&lt;&#x2F;span&gt;&lt;span&gt;() - start) * &lt;&#x2F;span&gt;&lt;span style=&quot;color:#d08770;&quot;&gt;1000:.6f&lt;&#x2F;span&gt;&lt;span&gt;}&amp;quot;)
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#b48ead;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span&gt;__name__ == &amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;__main__&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;:
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;main&lt;&#x2F;span&gt;&lt;span&gt;()
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Running this is simple (assuming you have a virtual environment sourced and &lt;code&gt;NumPy&lt;&#x2F;code&gt; installed in it):&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;sh&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-sh &quot;&gt;&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; python np_sgemm.py
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;Elapsed&lt;&#x2F;span&gt;&lt;span&gt; time: 16247.785098
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;That&#x27;s a difference of over &lt;strong&gt;5 seconds!!&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;And this is where the idea came from. Just to ensure that my &lt;code&gt;NumPy&lt;&#x2F;code&gt; installation linked to a BLAS library, I ran&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;sh&quot; style=&quot;background-color:#2b303b;color:#c0c5ce;&quot; class=&quot;language-sh &quot;&gt;&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt;$&lt;&#x2F;span&gt;&lt;span&gt; python&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bf616a;&quot;&gt; -c &lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#a3be8c;&quot;&gt;import numpy; numpy.__config__.show()&lt;&#x2F;span&gt;&lt;span&gt;&amp;quot;
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Which contained this snippet in its output&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#2b303b;color:#c0c5ce;&quot;&gt;&lt;code&gt;&lt;span&gt;&amp;quot;Build Dependencies&amp;quot;: {
+&lt;&#x2F;span&gt;&lt;span&gt;    &amp;quot;blas&amp;quot;: {
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;name&amp;quot;: &amp;quot;scipy-openblas&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;found&amp;quot;: true,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;version&amp;quot;: &amp;quot;0.3.30&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;detection method&amp;quot;: &amp;quot;pkgconfig&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;include directory&amp;quot;: &amp;quot;&#x2F;opt&#x2F;_internal&#x2F;cpython-3.12.12&#x2F;lib&#x2F;python3.12&#x2F;site-packages&#x2F;scipy_openblas64&#x2F;include&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;lib directory&amp;quot;: &amp;quot;&#x2F;opt&#x2F;_internal&#x2F;cpython-3.12.12&#x2F;lib&#x2F;python3.12&#x2F;site-packages&#x2F;scipy_openblas64&#x2F;lib&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;openblas configuration&amp;quot;: &amp;quot;OpenBLAS 0.3.30  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;pc file directory&amp;quot;: &amp;quot;&#x2F;project&#x2F;.openblas&amp;quot;
+&lt;&#x2F;span&gt;&lt;span&gt;    },
+&lt;&#x2F;span&gt;&lt;span&gt;    &amp;quot;lapack&amp;quot;: {
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;name&amp;quot;: &amp;quot;scipy-openblas&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;found&amp;quot;: true,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;version&amp;quot;: &amp;quot;0.3.30&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;detection method&amp;quot;: &amp;quot;pkgconfig&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;include directory&amp;quot;: &amp;quot;&#x2F;opt&#x2F;_internal&#x2F;cpython-3.12.12&#x2F;lib&#x2F;python3.12&#x2F;site-packages&#x2F;scipy_openblas64&#x2F;include&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;lib directory&amp;quot;: &amp;quot;&#x2F;opt&#x2F;_internal&#x2F;cpython-3.12.12&#x2F;lib&#x2F;python3.12&#x2F;site-packages&#x2F;scipy_openblas64&#x2F;lib&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;openblas configuration&amp;quot;: &amp;quot;OpenBLAS 0.3.30  USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64&amp;quot;,
+&lt;&#x2F;span&gt;&lt;span&gt;      &amp;quot;pc file directory&amp;quot;: &amp;quot;&#x2F;project&#x2F;.openblas&amp;quot;
+&lt;&#x2F;span&gt;&lt;span&gt;    }
+&lt;&#x2F;span&gt;&lt;span&gt;  }
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;indicating that it was linked against &lt;code&gt;OpenBLAS&lt;&#x2F;code&gt; during build.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;the-conclusion&quot;&gt;The Conclusion&lt;&#x2F;h3&gt;
+&lt;p&gt;This was enough evidence to motivate me to write a BLAS implementation. Of course, it shall not be a production level library intended as a drop-in replacement for &lt;code&gt;OpenBLAS&lt;&#x2F;code&gt;, but my target is to take it far enough in an educational context to demonstrate visible performance gains.&lt;&#x2F;p&gt;
+&lt;p&gt;This, as I mentioned earlier, is rather an announcement post for a series of upcoming posts in which we shall implement the library kernel-by-kernel, starting from &lt;code&gt;SGEMM&lt;&#x2F;code&gt; and following with double precision and more kernels.&lt;&#x2F;p&gt;
+&lt;p&gt;All the resources I follow or study from I shall link at the relevant time and place.&lt;&#x2F;p&gt;
+&lt;p&gt;There&#x27;s more to come, and lots to learn.&lt;&#x2F;p&gt;
+&lt;p&gt;Till then, sit tight!&lt;&#x2F;p&gt;
+</content>
+        
+    </entry>
+</feed>
