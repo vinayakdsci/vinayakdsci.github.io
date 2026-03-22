@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Posts on vinayakdsci</title>
+    <link>https://www.vinayakdsci.github.io/posts/</link>
+    <description>Recent content in Posts on vinayakdsci</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <managingEditor>vinayakdev.sci@gmail.com</managingEditor>
+    <webMaster>vinayakdev.sci@gmail.com</webMaster>
+    <lastBuildDate>Mon, 01 Dec 2025 00:00:00 +0000</lastBuildDate>
+    <atom:link href="https://www.vinayakdsci.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Building BLAS, Part 2: Introducing devblas</title>
+      <link>https://www.vinayakdsci.github.io/posts/2025-12-01/</link>
+      <pubDate>Mon, 01 Dec 2025 00:00:00 +0000</pubDate><author>vinayakdev.sci@gmail.com</author>
+      <guid>https://www.vinayakdsci.github.io/posts/2025-12-01/</guid>
+      <description>&lt;h3 id=&#34;why-a-separate-post-to-introduce-the-library&#34;&gt;Why a separate post to introduce the library?&lt;/h3&gt;&#xA;&lt;p&gt;In the previous post in the BLAS series, we looked at how &lt;code&gt;NumPy&lt;/code&gt; significantly outperformed a naive &lt;code&gt;IJK&lt;/code&gt; ordered three-loop C++ implementation on the same matrix sizes.&#xA;The post was an announcement for both the blog series and the library we will implement as the series progresses.&#xA;Over the past two weeks, I spent some time setting up the library and plugging in our naive C++ implementation into the codebase.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Blog Series: Building a BLAS Library From Scratch</title>
+      <link>https://www.vinayakdsci.github.io/posts/2025-11-17/</link>
+      <pubDate>Mon, 17 Nov 2025 00:00:00 +0000</pubDate><author>vinayakdev.sci@gmail.com</author>
+      <guid>https://www.vinayakdsci.github.io/posts/2025-11-17/</guid>
+      <description>&lt;h3 id=&#34;the-motivation&#34;&gt;The Motivation&lt;/h3&gt;&#xA;&lt;p&gt;For years, I’ve relied on highly optimized BLAS libraries like OpenBLAS, BLIS, and MKL without ever really understanding the machinery inside them.&lt;/p&gt;&#xA;&lt;p&gt;Recently, while working on some multithreaded code, I found myself benchmarking NumPy operations against naive C++ implementations. The results, though not surprising, were drastic enough to trigger a deeper curiosity about how NumPy achieves such speed. We all know NumPy is backed by C, and often links against BLAS libraries like OpenBLAS, but that only raises a more interesting question:&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

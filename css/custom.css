@@ -1,0 +1,25 @@
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('/fonts/EBGaramond.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap; /* Critical for rendering speed */
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('/fonts/Roboto.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap; /* Critical for rendering speed */
+}
+
+
+@font-face {
+  font-family: 'Fira Code';
+  src: url('/fonts/FiraCode.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap; /* Critical for rendering speed */
+}
+

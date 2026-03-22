@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+  <meta http-equiv="X-Clacks-Overhead" content="GNU Terry Pratchett" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Building BLAS, Part 2: Introducing devblas | vinayakdsci</title>
+<meta name="title" content="Building BLAS, Part 2: Introducing devblas" />
+<meta name="description" content="Why a separate post to introduce the library?
+In the previous post in the BLAS series, we looked at how NumPy significantly outperformed a naive IJK ordered three-loop C&#43;&#43; implementation on the same matrix sizes.
+The post was an announcement for both the blog series and the library we will implement as the series progresses.
+Over the past two weeks, I spent some time setting up the library and plugging in our naive C&#43;&#43; implementation into the codebase." />
+<meta name="keywords" content="" />
+
+
+<meta property="og:url" content="https://www.vinayakdsci.github.io/posts/2025-12-01/">
+  <meta property="og:site_name" content="vinayakdsci">
+  <meta property="og:title" content="Building BLAS, Part 2: Introducing devblas">
+  <meta property="og:description" content="Why a separate post to introduce the library? In the previous post in the BLAS series, we looked at how NumPy significantly outperformed a naive IJK ordered three-loop C&#43;&#43; implementation on the same matrix sizes. The post was an announcement for both the blog series and the library we will implement as the series progresses. Over the past two weeks, I spent some time setting up the library and plugging in our naive C&#43;&#43; implementation into the codebase.">
+  <meta property="og:locale" content="en_us">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="posts">
+    <meta property="article:published_time" content="2025-12-01T00:00:00+00:00">
+    <meta property="article:modified_time" content="2025-12-01T00:00:00+00:00">
+
+
+
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Building BLAS, Part 2: Introducing devblas">
+  <meta name="twitter:description" content="Why a separate post to introduce the library? In the previous post in the BLAS series, we looked at how NumPy significantly outperformed a naive IJK ordered three-loop C&#43;&#43; implementation on the same matrix sizes. The post was an announcement for both the blog series and the library we will implement as the series progresses. Over the past two weeks, I spent some time setting up the library and plugging in our naive C&#43;&#43; implementation into the codebase.">
+
+
+
+
+  <meta itemprop="name" content="Building BLAS, Part 2: Introducing devblas">
+  <meta itemprop="description" content="Why a separate post to introduce the library? In the previous post in the BLAS series, we looked at how NumPy significantly outperformed a naive IJK ordered three-loop C&#43;&#43; implementation on the same matrix sizes. The post was an announcement for both the blog series and the library we will implement as the series progresses. Over the past two weeks, I spent some time setting up the library and plugging in our naive C&#43;&#43; implementation into the codebase.">
+  <meta itemprop="datePublished" content="2025-12-01T00:00:00+00:00">
+  <meta itemprop="dateModified" content="2025-12-01T00:00:00+00:00">
+  <meta itemprop="wordCount" content="1770">
+<meta name="referrer" content="no-referrer-when-downgrade" />
+
+  <style>
+  :root {
+    --width: 720px;
+    --font-main: Verdana, sans-serif;
+    --font-secondary: Verdana, sans-serif;
+    --font-scale: 1em;
+    --background-color: #fff;
+    --heading-color: #222;
+    --text-color: #444;
+    --link-color: #3273dc;
+    --visited-color: #8b6fcb;
+    --blockquote-color: #222;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background-color: #01242e;
+      --heading-color: #eee;
+      --text-color: #ddd;
+      --link-color: #8cc2dd;
+      --visited-color: #8b6fcb;
+      --blockquote-color: #ccc;
+    }
+  }
+
+  body {
+    font-family: var(--font-secondary);
+    font-size: var(--font-scale);
+    margin: auto;
+    padding: 20px;
+    max-width: var(--width);
+    text-align: left;
+    background-color: var(--background-color);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.5;
+    color: var(--text-color);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-main);
+    color: var(--heading-color);
+  }
+
+  a {
+    color: var(--link-color);
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  nav a {
+    margin-right: 8px;
+  }
+
+  strong,
+  b {
+    color: var(--heading-color);
+  }
+
+  button {
+    margin: 0;
+    cursor: pointer;
+  }
+
+  time {
+    font-family: monospace;
+    font-style: normal;
+    font-size: 15px;
+  }
+
+  main {
+    line-height: 1.6;
+  }
+
+  table {
+    width: 100%;
+  }
+
+  hr {
+    border: 0;
+    border-top: 1px dashed;
+  }
+
+  img {
+    max-width: 100%;
+  }
+
+  code {
+    font-family: monospace;
+    padding: 2px;
+    border-radius: 3px;
+  }
+
+  blockquote {
+    border-left: 1px solid #999;
+    color: var(--blockquote-color);
+    padding-left: 20px;
+    font-style: italic;
+  }
+
+  footer {
+    padding: 25px 0;
+    text-align: center;
+  }
+
+  .title:hover {
+    text-decoration: none;
+  }
+
+  .title h1 {
+    font-size: 1.5em;
+  }
+
+  .inline {
+    width: auto !important;
+  }
+
+  .highlight,
+  .code {
+    border-radius: 3px;
+    margin-block-start: 1em;
+    margin-block-end: 1em;
+    overflow-x: auto;
+  }
+
+   
+  ul.blog-posts {
+    list-style-type: none;
+    padding: unset;
+  }
+
+  ul.blog-posts li {
+    display: flex;
+  }
+
+  ul.blog-posts li span {
+    flex: 0 0 130px;
+  }
+
+  ul.blog-posts li a:visited {
+    color: var(--visited-color);
+  }
+
+</style>
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true,
+      processEnvironments: true
+    },
+    options: {
+      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+    }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+
+
+<style>
+   
+  :root {
+    --bg-color: #fdfdfd;        
+    --text-color: #111111;      
+    --accent-rust: #8b3200;     
+    --meta-dark: #222222;       
+  }
+
+   
+  body {
+    background-color: var(--bg-color) !important;
+    color: var(--text-color) !important;
+    font-family: 'EB Garamond', serif !important;
+    font-size: 1.1rem !important;  
+    line-height: 1.4 !important;
+    max-width: 700px !important;
+    margin: 1.5rem auto !important;
+    padding: 0 0.9rem !important;
+  }
+
+   
+  header nav {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    margin-bottom: 4rem !important;
+    flex-wrap: nowrap !important; 
+  }
+
+  .site-title {
+    font-family: 'EB Garamond' serif !important;
+    color: var(--text-color) !important;
+    text-decoration: none !important;
+    font-weight: 450 !important;
+    font-size: 1.8rem !important;
+  }
+
+  header nav ul {
+    display: flex !important;
+    list-style: none !important;
+    gap: 1.5rem !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  header nav ul li a {
+    color: var(--text-color) !important;
+    text-decoration: none !important;
+    border-bottom: 1px solid var(--accent-rust);
+  }
+
+   
+  h1, h2, h3 {
+    font-family: 'EB Garamond', serif !important;
+    color: var(--accent-rust) !important;
+    font-weight: 500 !important;
+    margin-top: 2rem !important;
+    text-align: left !important;
+  }
+
+  h1 { font-size: 1.8rem !important; }  
+
+  p, p strong, p b, span {
+    color: var(--text-color) !important;
+    text-align: justify !important;
+    text-justify: inter-word !important;
+  }
+
+  .post-list-item {
+    display: flex !important;
+    flex-direction: column !important;  
+    margin-bottom: 2.5rem !important;   
+  }
+  .post-date { 
+    color: var(--meta-dark) !important; 
+    font-style: normal !important;  
+    font-size: 1.3rem !important;
+    font-family: 'Roboto' sans-serif !important;
+    font-style: italic !important;
+    opacity: 0.6 !important;
+  }
+
+  .post-hash { color: var(--accent-rust) !important; font-weight: bold; }
+
+  .post-link { 
+    font-family: 'Roboto' sans-serif !important;
+    text-decoration: none !important; 
+    color: var(--accent-rust) !important; 
+    font-weight: 600 !important; 
+    font-size: 2.0rem !important;
+  }
+
+  .post-title-container {
+    display: flex !important;
+    align-items: baseline !important;
+    gap: 0.6rem !important;
+  }
+
+  footer {
+    margin-top: 6rem !important;
+    border-top: 1px solid #eee !important;
+    padding-top: 2rem !important;
+    
+     
+    display: flex !important;
+    justify-content: center !important; 
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    
+    gap: 2rem !important;  
+    font-size: 0.85rem !important;
+    width: 100% !important;
+  }
+  
+  footer a { 
+    color: var(--text-color) !important; 
+    text-decoration: none !important; 
+    border-bottom: 1px solid #ddd !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.4rem !important;
+    white-space: nowrap !important;
+    font-size: 1.2rem !important;
+  }
+
+  footer a svg {
+    width: 1rem !important;
+    height: 1rem !important;
+    fill: #444 !important;
+  }
+
+   
+  .breadcrumb-separator, .separator, nav span::after, nav a::after {
+    display: none !important;
+  }
+
+  pre code {
+    background: none !important;  
+    color: inherit !important;
+    font-family: 'Fira Code', monospace !important;
+    display: block;
+    padding: 0.4rem;
+    overflow-x: auto;
+    font-size: 1rem !important;
+  }
+  
+  pre {
+    background-color: #f5f5f5 !important;  
+    border: 1px solid #eee;
+    border-radius: 4px;
+  }
+
+</style>
+</head>
+
+<body>
+  <header><header>
+  <nav>
+    <a href="/" class="site-title">vinayakdsci</a>
+    <ul>
+      
+        <li><a href="/posts/">Posts</a></li>
+      
+        <li><a href="/about/">About</a></li>
+      
+    </ul>
+  </nav>
+</header>
+</header>
+  <main>
+<article>
+  <h1 style="color: var(--header-color); font-size: 2.4rem; margin-bottom: 0.5rem;">Building BLAS, Part 2: Introducing devblas</h1>
+  <div style="font-style: italic; color: var(--meta-color); margin-bottom: 2rem;">
+    December 1, 2025 — 9 min read
+  </div>
+  <div class="content">
+    <h3 id="why-a-separate-post-to-introduce-the-library">Why a separate post to introduce the library?</h3>
+<p>In the previous post in the BLAS series, we looked at how <code>NumPy</code> significantly outperformed a naive <code>IJK</code> ordered three-loop C++ implementation on the same matrix sizes.
+The post was an announcement for both the blog series and the library we will implement as the series progresses.
+Over the past two weeks, I spent some time setting up the library and plugging in our naive C++ implementation into the codebase.</p>
+<p>However, the efforts resulted in a codebase that has now become large enough to deserve its own introduction post, so that you do not feel lost when I use code from the library to demonstrate the concepts we will discuss in upcoming posts.</p>
+<p>In its entirety, the library at the moment consists of a naive <code>IJK</code> ordered IGEMM/SGEMM implementation exposed via C, but internally implemented in C++ so that we can use templates
+to write reusable code. I have deliberately avoided the use of classes and other OOP constructs to avoid runtime overhead, and I expose the API in C to maintain a stable ABI.</p>
+<p>The library also provides a generic benchmarking harness (which we&rsquo;ll use a lot) that allows the user to pass in a function pointer to their own implementation of a GEMM for
+benchmarking, as long as it follows the specified function signature.</p>
+<p>So, to avoid cluttering other posts with implementation details from the library, I decided to write an intro to it. In this post, we&rsquo;ll discuss the implementation and design details,
+and how to use it to benchmark your own experimental kernels.</p>
+<p>The library lives <a href="https://github.com/vinayakdsci/devblas">here on Github</a>. The README will have instructions on building, but I will very quickly give a brief overview.</p>
+<h3 id="building-and-linking">Building and linking</h3>
+<p>Let&rsquo;s say that you&rsquo;ve cloned the repository to <code>~/devblas</code> (a simple git clone in the home dir).</p>
+<p>Here&rsquo;s a quick overview before we move into the internal details. (These instructions are also there on the repository README, I am just repeating here for completeness).</p>
+<p>To build, we&rsquo;ll first have to generate the build files with CMake and then run the build command. I recommend having a recent enough version of CMake and Ninja installed.
+To build, run CMake in the top-level of the repository.</p>
+<div class="highlight"><pre tabindex="0" style="color:#e5e5e5;background-color:#000;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-sh" data-lang="sh"><span style="display:flex;"><span>$ cmake -S. -Bbuild -GNinja -DCMAKE_C_COMPILER=clang <span style="color:#0ff;font-weight:bold">\
+</span></span></span><span style="display:flex;"><span><span style="color:#0ff;font-weight:bold"></span>  -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release <span style="color:#0ff;font-weight:bold">\
+</span></span></span><span style="display:flex;"><span><span style="color:#0ff;font-weight:bold"></span>  -DCMAKE_INSTALL_PREFIX=devblas_libs
+</span></span></code></pre></div><p>You can plug in your own C and C++ compilers here. I mainly use Clang on WSL, so I specify it in the command.
+Now let&rsquo;s build the source.</p>
+<div class="highlight"><pre tabindex="0" style="color:#e5e5e5;background-color:#000;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-sh" data-lang="sh"><span style="display:flex;"><span>$ cmake --build build &amp;&amp; cmake --install build
+</span></span></code></pre></div><p>This will build the code, produce a <code>.so</code> file, and install the library under <code>devblas_libs/devblas</code> in the source root.</p>
+<p>To link a <code>C</code> file with the <code>.so</code> file, compile the file like this (from the repository root):</p>
+<div class="highlight"><pre tabindex="0" style="color:#e5e5e5;background-color:#000;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-sh" data-lang="sh"><span style="display:flex;"><span>$ clang test.c -o <span style="color:#fff;font-weight:bold">test</span> -Iinclude -Ldevblas_libs -ldevblas
+</span></span></code></pre></div><p>To run the <code>test</code> binary, preload the shared object file and invoke the executable.</p>
+<div class="highlight"><pre tabindex="0" style="color:#e5e5e5;background-color:#000;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-sh" data-lang="sh"><span style="display:flex;"><span>$ LD_PRELOAD=devblas_libs/devblas/libdevblas.so ./test
+</span></span></code></pre></div><p>To make the experimentation process easier, I&rsquo;ve provided an example file called <code>bench_driver.c</code> in the top-level.
+It will automatically link with the produced <code>.so</code> file, so you won&rsquo;t have to go through the hassle of linking manually.
+To enable compilation of <code>bench_driver.c</code>, add <code>-DDEVBLAS_BUILD_BENCH=ON</code> to the CMake command, and it should produce a binary called <code>bench_driver</code> in the build dir.</p>
+<div class="highlight"><pre tabindex="0" style="color:#e5e5e5;background-color:#000;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-sh" data-lang="sh"><span style="display:flex;"><span>$ cmake -S. -Bbuild -GNinja -DCMAKE_C_COMPILER=clang <span style="color:#0ff;font-weight:bold">\
+</span></span></span><span style="display:flex;"><span><span style="color:#0ff;font-weight:bold"></span>  -DCMAKE_CXX_COMPILER=clang++ <span style="color:#0ff;font-weight:bold">\
+</span></span></span><span style="display:flex;"><span><span style="color:#0ff;font-weight:bold"></span>  -DCMAKE_BUILD_TYPE=Release <span style="color:#0ff;font-weight:bold">\
+</span></span></span><span style="display:flex;"><span><span style="color:#0ff;font-weight:bold"></span>  -DDEVBLAS_BUILD_BENCH=ON
+</span></span><span style="display:flex;"><span>$ build/bench_driver
+</span></span><span style="display:flex;"><span>naive_gemm_ijk_driver:
+</span></span><span style="display:flex;"><span>        Average GFLOP/s: 0.601536
+</span></span><span style="display:flex;"><span>naive_gemm_ijk_driver:
+</span></span><span style="display:flex;"><span>        Average GFLOP/s: 0.611877
+</span></span></code></pre></div><h3 id="the-benchmarking-harness">The Benchmarking Harness</h3>
+<p>The benchmarking harness is a crucial feature of the library, because we will make extensive use of it to benchmark our kernel implementations as we progress with the series.
+Internal details are irrelevant to this post (we shall always use the C bindings, so it is much easier to just read the internal details on Github), so we will omit them here.</p>
+<p>The benchmarking harness provides two benchmarking functions, called <code>bench_igemm(...)</code> for IGEMMs and <code>bench_sgemm(...)</code> for SGEMMs.</p>
+<p>Let&rsquo;s look at the <code>bench_driver.c</code> file to see how they&rsquo;re used.</p>
+<div class="highlight"><pre tabindex="0" style="color:#e5e5e5;background-color:#000;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="color:#0f0;font-weight:bold">#include</span> <span style="color:#0f0;font-weight:bold">&#34;devblas/c_api/blas.h&#34;</span><span style="color:#0f0;font-weight:bold">
+</span></span></span><span style="display:flex;"><span><span style="color:#0f0;font-weight:bold">#include</span> <span style="color:#0f0;font-weight:bold">&lt;assert.h&gt;</span><span style="color:#0f0;font-weight:bold">
+</span></span></span><span style="display:flex;"><span><span style="color:#0f0;font-weight:bold">#include</span> <span style="color:#0f0;font-weight:bold">&lt;stdio.h&gt;</span><span style="color:#0f0;font-weight:bold">
+</span></span></span><span style="display:flex;"><span><span style="color:#0f0;font-weight:bold"></span>
+</span></span><span style="display:flex;"><span><span style="color:#fff;font-weight:bold">int</span> main(<span style="color:#fff;font-weight:bold">void</span>) {
+</span></span><span style="display:flex;"><span>  bench_igemm(naive_igemm_ijk, <span style="color:#0ff;font-weight:bold">&#34;naive_gemm_ijk_driver&#34;</span>, <span style="color:#ff0;font-weight:bold">1</span>, <span style="color:#ff0;font-weight:bold">3</span>,
+</span></span><span style="display:flex;"><span>              DEVBLAS_LAYOUT_ROW_MAJOR, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>);
+</span></span><span style="display:flex;"><span>  bench_sgemm(naive_sgemm_ijk, <span style="color:#0ff;font-weight:bold">&#34;naive_gemm_ijk_driver&#34;</span>, <span style="color:#ff0;font-weight:bold">1</span>, <span style="color:#ff0;font-weight:bold">3</span>,
+</span></span><span style="display:flex;"><span>              DEVBLAS_LAYOUT_COLUMN_MAJOR, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>, <span style="color:#ff0;font-weight:bold">1024</span>);
+</span></span><span style="display:flex;"><span>  <span style="color:#fff;font-weight:bold">return</span> <span style="color:#ff0;font-weight:bold">0</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Both the functions follow a very similar signature, differing only in the data types of the matrices. We&rsquo;ll just talk about <code>bench_sgemm(...)</code> from now, and everything should apply to <code>bench_igemm(...)</code> as well.</p>
+<p>The first argument is a function pointer, <code>naive_sgemm_ijk</code>. It points to our implementation of the naive SGEMM that we called <code>matmul()</code> in the previous post.
+Its signature is:</p>
+<div class="highlight"><pre tabindex="0" style="color:#e5e5e5;background-color:#000;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="color:#fff;font-weight:bold">void</span> naive_sgemm_ijk(<span style="color:#fff;font-weight:bold">devblas_layout_t</span>, <span style="color:#fff;font-weight:bold">const</span> <span style="color:#fff;font-weight:bold">float</span> *, <span style="color:#fff;font-weight:bold">const</span> <span style="color:#fff;font-weight:bold">float</span> *, <span style="color:#fff;font-weight:bold">float</span> *,
+</span></span><span style="display:flex;"><span>                     <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>);
+</span></span></code></pre></div><p>It takes a layout (we&rsquo;ll talk about that very soon), pointers to the input matrices, pointer to the output matrix, the integers <code>M</code>, <code>N</code>, <code>K</code>,
+(the matrix dimensions), and <code>lda</code>, <code>ldb</code>, <code>ldc</code> (the leading dimensions, which I&rsquo;ll get to very soon too).</p>
+<p>The second argument to the benchmark function is the name of the benchmark that makes it easier to understand the logging. It defaults to <code>default_naive_sgemm</code> if the value is <code>NULL</code>.
+Third argument is the number of warmup iterations to run so that we are not timing cold runs, and following that is the number of iterations to actually run and measure.
+The rest of the arguments are just values that the <code>naive_sgemm_ijk</code> function will accept, so that the harness can run it with the correct arguments.</p>
+<p>Let&rsquo;s write a very simple example &ldquo;kernel&rdquo; and plug that into the benchmark function.</p>
+<div class="highlight"><pre tabindex="0" style="color:#e5e5e5;background-color:#000;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="color:#0f0;font-weight:bold">#include</span> <span style="color:#0f0;font-weight:bold">&#34;devblas/c_api/blas.h&#34;</span><span style="color:#0f0;font-weight:bold">
+</span></span></span><span style="display:flex;"><span><span style="color:#0f0;font-weight:bold">#include</span> <span style="color:#0f0;font-weight:bold">&lt;stdio.h&gt;</span><span style="color:#0f0;font-weight:bold">
+</span></span></span><span style="display:flex;"><span><span style="color:#0f0;font-weight:bold"></span>
+</span></span><span style="display:flex;"><span><span style="color:#fff;font-weight:bold">void</span> my_experimental_kernel(<span style="color:#fff;font-weight:bold">devblas_layout_t</span>, <span style="color:#fff;font-weight:bold">const</span> <span style="color:#fff;font-weight:bold">float</span> *, <span style="color:#fff;font-weight:bold">const</span> <span style="color:#fff;font-weight:bold">float</span> *, <span style="color:#fff;font-weight:bold">float</span> *,
+</span></span><span style="display:flex;"><span>                            <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>, <span style="color:#fff;font-weight:bold">int</span>) {
+</span></span><span style="display:flex;"><span>  printf(<span style="color:#0ff;font-weight:bold">&#34;Hello, World!</span><span style="color:#0ff;font-weight:bold">\n</span><span style="color:#0ff;font-weight:bold">&#34;</span>);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#fff;font-weight:bold">int</span> main(<span style="color:#fff;font-weight:bold">void</span>) {
+</span></span><span style="display:flex;"><span>  bench_sgemm(my_experimental_kernel, <span style="color:#0ff;font-weight:bold">&#34;my_experimental_kernel&#34;</span>, <span style="color:#ff0;font-weight:bold">0</span>, <span style="color:#ff0;font-weight:bold">10</span>,
+</span></span><span style="display:flex;"><span>              DEVBLAS_LAYOUT_ROW_MAJOR, <span style="color:#ff0;font-weight:bold">0</span>, <span style="color:#ff0;font-weight:bold">0</span>, <span style="color:#ff0;font-weight:bold">0</span>, <span style="color:#ff0;font-weight:bold">0</span>, <span style="color:#ff0;font-weight:bold">0</span>, <span style="color:#ff0;font-weight:bold">0</span>);
+</span></span><span style="display:flex;"><span>  <span style="color:#fff;font-weight:bold">return</span> <span style="color:#ff0;font-weight:bold">0</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>In this example, we are just printing &ldquo;Hello, World!&rdquo; in our kernel, and telling the benchmark function to not warmup and run this function 10 times.
+Matrix sizes and leading dimensions (what we called <code>lda</code>, <code>ldb</code> and <code>ldc</code>) are all <code>0</code> so that we don&rsquo;t allocate any matrices inside the benchmark function.</p>
+<p>This outputs something like this:</p>
+<div class="highlight"><pre tabindex="0" style="color:#e5e5e5;background-color:#000;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-txt" data-lang="txt"><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>Hello, World!
+</span></span><span style="display:flex;"><span>my_experimental_kernel:
+</span></span><span style="display:flex;"><span>        Average GFLOP/s: -nan
+</span></span></code></pre></div><p>The function got called 10 times, as we expected, and gave <code>-nan</code> as the average GFLOP/s count. That&rsquo;s expected, we didn&rsquo;t give it anything to compute.</p>
+<p>For a legitimate kernel function, it will produce a valid GFLOP/s value that should give a fair idea of what slows down a kernel and what speeds it up.</p>
+<p>That is all we need to know about benchmarking for now. Let&rsquo;s move to&hellip;</p>
+<h3 id="layout">Layout</h3>
+<p>In general, no reasonable library will represent a matrix as a 2-D nested array. In general, matrices are stored as 1-D arrays, and we use the concept of strides to calculate which index in the 1-D array
+maps to the required index in 2-D.</p>
+<p>Now, anyone familiar with C or C++ will think of a 2-D matrix as a collection of multiple row arrays. However, initial BLAS implementations and Fortran, which was (and still is) heavily used for scientific computing,
+represented 2-D matrices in a column-major order. So instead of traversing the rows first, you traverse the columns first.</p>
+<p>In a setup that stores matrices as 1-D arrays, we can easily change our access pattern to switch between a row-major (as we have it in C, arrays of rows) or a column-major (as we have it in Fortran, array of columns) layout.</p>
+<p>Let&rsquo;s consider the following matrix:
+</p>
+$$ \begin{pmatrix} a & b \\\ c & d \end{pmatrix} $$<p>In a row-major format, the stored 1-D array would look like this
+</p>
+$$ \begin{bmatrix} a & b & c & d \end{bmatrix} $$<p>So when you access the next element, it is either the next one in this row, or the first element in the <em>next</em> row.</p>
+<p>However, in a column-major layout, we would walk the matrix column first, something like this:
+</p>
+$$ \begin{bmatrix} a & c & b & d \end{bmatrix} $$<p>
+so that <code>c</code> (just below <code>a</code>) becomes the element next to <code>a</code> in the 1-D array.</p>
+<p>That is what layouts do. They just change the storage and access pattern of the 1-D array that represents the 2-D matrix.</p>
+<h3 id="leading-dimensions">Leading dimensions</h3>
+<p>Another thing that we kept for later was the concept of leading dimensions (referred to as <code>lda</code>, <code>ldb</code>, <code>ldc</code>) above.</p>
+<p>Now, it is not always necessary that we will want to multiply the whole matrix in one go. There is a very high probability that you might need to multiply <strong>submatrices</strong>,
+and that is exactly what leading dimensions do.</p>
+<p>Let&rsquo;s extend the matrix we wrote above to a larger <code>3x3</code> size
+</p>
+$$ \begin{pmatrix} a & b & c \\\ d & e & f \\\ g & h & i \end{pmatrix} $$<p>Now let&rsquo;s say we have another matrix of the same size, but we don&rsquo;t want to multiply the whole matrix. Suppose we want to multiply the top left <code>2x2</code> submatrix.
+</p>
+$$ S = \begin{pmatrix} a & b \\\ d & e \end{pmatrix} $$<p>Assuming a row-major layout, we pass in the dimensions of the submatrix, <code>M=2</code>, <code>N=2</code>, <code>K=2</code> into the GEMM function. However, our matrices are <em>not</em> <code>2x2</code> in size, they are <code>3x3</code>.
+Therefore, to actually land on the first element of the next <em>logical</em> row, we pass in a leading dimension of <code>3</code> for both the input matrices.</p>
+<p>This means that we&rsquo;ll access first <code>K</code> successive elements for each row for first matrix of size <code>MxK</code>, and the moment we cross <code>K</code>, we move from the end of this <em>logical</em> row to the start of the next one by skipping <code>(lda - K)</code> elements.
+Accessing the elements requires us to compute the stride, which means how many elements we need to jump to reach the first element of row $R+1$ from the first element of row $R$.</p>
+<p>And leading dimensions are exactly that: the stride values used when operating on submatrices.</p>
+<h3 id="closing-comments">Closing comments</h3>
+<p>This was a text-heavy post, but it was necessary to introduce you to the architecture of the library, because I will be using it heavily in the upcoming posts.</p>
+<p>I did not want to clutter subsequent posts (which will be theory- and visualization-heavy) with library implementation details, and it seemed better to introduce them before
+we start on that kind of stuff and you get lost in the clutter.</p>
+<p>I&rsquo;ll introduce the memory hierarchy, cache behavior, and locality in the next post, and we&rsquo;ll modify our naive GEMM kernel and benchmark the modifications as we discuss the concepts, so that we can observe their effects.</p>
+<p>The next post will be out in a while. Stay tuned!</p>
+
+  </div>
+</article>
+
+  </main>
+  <footer><footer>
+<a href="/posts/">All posts</a>
+  <a href="https://github.com/">
+    <svg viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+    vinayakdsci
+  </a>
+
+  <a href="mailto:vinayakdev.sci@gmail.com">
+    <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+    Contact
+  </a>
+
+
+</footer>
+</footer>
+
+  
+</body>
+
+</html>
