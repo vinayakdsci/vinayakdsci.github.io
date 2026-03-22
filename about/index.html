@@ -215,27 +215,30 @@ Outside of fighting with computers, I love mathematics, music, and writing; And 
 
 
 <style>
-   
   :root {
-    --bg-color: #fdfdfd;        
-    --text-color: #111111;      
-    --accent-rust: #8b3200;     
-    --meta-dark: #222222;       
+    --bg-color: #fdfdfd;
+    --text-color: #111111;
+    --accent-rust: #8b3200;
+    --meta-dark: #222222;
   }
 
-   
+  html {
+    -webkit-text-size-adjust: none !important;
+    -moz-text-size-adjust: none !important;
+    text-size-adjust: none !important;
+  }
+
   body {
     background-color: var(--bg-color) !important;
     color: var(--text-color) !important;
     font-family: 'EB Garamond', serif !important;
-    font-size: 1.1rem !important;  
+    font-size: 1.1rem !important;
     line-height: 1.4 !important;
     max-width: 700px !important;
     margin: 1.5rem auto !important;
     padding: 0 0.9rem !important;
   }
 
-   
   header nav {
     display: flex !important;
     flex-direction: row !important;
@@ -268,7 +271,6 @@ Outside of fighting with computers, I love mathematics, music, and writing; And 
     border-bottom: 1px solid var(--accent-rust);
   }
 
-   
   h1, h2, h3 {
     font-family: 'EB Garamond', serif !important;
     color: var(--accent-rust) !important;
@@ -277,7 +279,7 @@ Outside of fighting with computers, I love mathematics, music, and writing; And 
     text-align: left !important;
   }
 
-  h1 { font-size: 1.8rem !important; }  
+  h1 { font-size: 1.8rem !important; }
 
   p, p strong, p b, span {
     color: var(--text-color) !important;
@@ -287,12 +289,12 @@ Outside of fighting with computers, I love mathematics, music, and writing; And 
 
   .post-list-item {
     display: flex !important;
-    flex-direction: column !important;  
-    margin-bottom: 2.5rem !important;   
+    flex-direction: column !important;
+    margin-bottom: 2.5rem !important;
   }
   .post-date { 
     color: var(--meta-dark) !important; 
-    font-style: normal !important;  
+    font-style: normal !important;
     font-size: 1.3rem !important;
     font-family: 'Roboto' sans-serif !important;
     font-style: italic !important;
@@ -320,13 +322,12 @@ Outside of fighting with computers, I love mathematics, music, and writing; And 
     border-top: 1px solid #eee !important;
     padding-top: 2rem !important;
     
-     
     display: flex !important;
     justify-content: center !important; 
     align-items: center !important;
     flex-wrap: wrap !important;
     
-    gap: 2rem !important;  
+    gap: 2rem !important;
     font-size: 0.85rem !important;
     width: 100% !important;
   }
@@ -348,13 +349,12 @@ Outside of fighting with computers, I love mathematics, music, and writing; And 
     fill: #444 !important;
   }
 
-   
   .breadcrumb-separator, .separator, nav span::after, nav a::after {
     display: none !important;
   }
 
   pre code {
-    background: none !important;  
+    background: none !important;
     color: inherit !important;
     font-family: 'Fira Code', monospace !important;
     display: block;
@@ -364,10 +364,18 @@ Outside of fighting with computers, I love mathematics, music, and writing; And 
   }
   
   pre {
-    background-color: #f5f5f5 !important;  
+    background-color: #f5f5f5 !important;
     border: 1px solid #eee;
     border-radius: 4px;
   }
+
+  pre, code, kbd, samp {
+    font-family: 'Fira Code', monospace !important;
+    font-size: 0.9rem !important;
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+  }
+
 
 </style>
 </head>
