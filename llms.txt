@@ -1,0 +1,5 @@
+# vinayakdsci
+- [About](https://vinayakdsci.github.io/about/)
+
+## Posts
+- [Rust: Exploring Lifetimes](https://vinayakdsci.github.io/posts/lifetimes/rust_lifetimes/)

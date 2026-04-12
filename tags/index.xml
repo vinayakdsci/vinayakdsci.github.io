@@ -1,13 +1,40 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Tags on vinayakdsci</title>
     <link>https://vinayakdsci.github.io/tags/</link>
     <description>Recent content in Tags on vinayakdsci</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <managingEditor>vinayakdev.sci@gmail.com</managingEditor>
-    <webMaster>vinayakdev.sci@gmail.com</webMaster>
+    <lastBuildDate>Sun, 12 Apr 2026 17:12:32 +0530</lastBuildDate>
     <atom:link href="https://vinayakdsci.github.io/tags/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Lifetimes</title>
+      <link>https://vinayakdsci.github.io/tags/lifetimes/</link>
+      <pubDate>Sun, 12 Apr 2026 17:12:32 +0530</pubDate>
+      <guid>https://vinayakdsci.github.io/tags/lifetimes/</guid>
+      <description></description>
+    </item>
+    <item>
+      <title>Low Level Programming</title>
+      <link>https://vinayakdsci.github.io/tags/low-level-programming/</link>
+      <pubDate>Sun, 12 Apr 2026 17:12:32 +0530</pubDate>
+      <guid>https://vinayakdsci.github.io/tags/low-level-programming/</guid>
+      <description></description>
+    </item>
+    <item>
+      <title>Ownership</title>
+      <link>https://vinayakdsci.github.io/tags/ownership/</link>
+      <pubDate>Sun, 12 Apr 2026 17:12:32 +0530</pubDate>
+      <guid>https://vinayakdsci.github.io/tags/ownership/</guid>
+      <description></description>
+    </item>
+    <item>
+      <title>Rust</title>
+      <link>https://vinayakdsci.github.io/tags/rust/</link>
+      <pubDate>Sun, 12 Apr 2026 17:12:32 +0530</pubDate>
+      <guid>https://vinayakdsci.github.io/tags/rust/</guid>
+      <description></description>
+    </item>
   </channel>
 </rss>

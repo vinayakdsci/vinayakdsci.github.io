@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto" data-theme="light">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>Rust: Exploring Lifetimes | vinayakdsci</title>
+<meta name="keywords" content="Rust, Lifetimes, Low Level Programming, Ownership">
+<meta name="description" content="The Borrow Checker
+I have written mostly C and C&#43;&#43; as long as I have programmed.
+However, as I have been experimenting with Rust lately, I have gained the opinion that it is undeniable that the language does have some features that are a great help in reducing the developer&rsquo;s cognitive load by offloading some safety enforcements to the compiler. Most of these safety measures are enforced by the compiler through the in-built (and notorious) Borrow Checker.">
+<meta name="author" content="Vinayak Dev">
+<link rel="canonical" href="https://vinayakdsci.github.io/posts/lifetimes/rust_lifetimes/">
+<link crossorigin="anonymous" href="/assets/css/stylesheet.8a3f19f6f5788720da36bc5e295649d56155f288aa7c97d78884e8168a82976c.css" integrity="sha256-ij8Z9vV4hyDaNrxeKVZJ1WFV8oiqfJfXiIToFoqCl2w=" rel="preload stylesheet" as="style">
+<link rel="icon" href="https://vinayakdsci.github.io/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://vinayakdsci.github.io/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://vinayakdsci.github.io/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://vinayakdsci.github.io/apple-touch-icon.png">
+<link rel="mask-icon" href="https://vinayakdsci.github.io/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<link rel="alternate" hreflang="en" href="https://vinayakdsci.github.io/posts/lifetimes/rust_lifetimes/">
+<noscript>
+    <style>
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+</noscript><meta property="og:url" content="https://vinayakdsci.github.io/posts/lifetimes/rust_lifetimes/">
+  <meta property="og:site_name" content="vinayakdsci">
+  <meta property="og:title" content="Rust: Exploring Lifetimes">
+  <meta property="og:description" content="The Borrow Checker I have written mostly C and C&#43;&#43; as long as I have programmed.
+However, as I have been experimenting with Rust lately, I have gained the opinion that it is undeniable that the language does have some features that are a great help in reducing the developer’s cognitive load by offloading some safety enforcements to the compiler. Most of these safety measures are enforced by the compiler through the in-built (and notorious) Borrow Checker.">
+  <meta property="og:locale" content="en_us">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="posts">
+    <meta property="article:published_time" content="2026-04-12T17:12:32+05:30">
+    <meta property="article:modified_time" content="2026-04-12T17:12:32+05:30">
+    <meta property="article:tag" content="Rust">
+    <meta property="article:tag" content="Lifetimes">
+    <meta property="article:tag" content="Low Level Programming">
+    <meta property="article:tag" content="Ownership">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Rust: Exploring Lifetimes">
+  <meta name="twitter:description" content="The Borrow Checker I have written mostly C and C&#43;&#43; as long as I have programmed.
+However, as I have been experimenting with Rust lately, I have gained the opinion that it is undeniable that the language does have some features that are a great help in reducing the developer’s cognitive load by offloading some safety enforcements to the compiler. Most of these safety measures are enforced by the compiler through the in-built (and notorious) Borrow Checker.">
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Posts",
+      "item": "https://vinayakdsci.github.io/posts/"
+    }, 
+    {
+      "@type": "ListItem",
+      "position":  2 ,
+      "name": "Rust: Exploring Lifetimes",
+      "item": "https://vinayakdsci.github.io/posts/lifetimes/rust_lifetimes/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Rust: Exploring Lifetimes",
+  "name": "Rust: Exploring Lifetimes",
+  "description": "The Borrow Checker I have written mostly C and C++ as long as I have programmed.\nHowever, as I have been experimenting with Rust lately, I have gained the opinion that it is undeniable that the language does have some features that are a great help in reducing the developer\u0026rsquo;s cognitive load by offloading some safety enforcements to the compiler. Most of these safety measures are enforced by the compiler through the in-built (and notorious) Borrow Checker.\n",
+  "keywords": [
+    "Rust", "Lifetimes", "Low Level Programming", "Ownership"
+  ],
+  "articleBody": "The Borrow Checker I have written mostly C and C++ as long as I have programmed.\nHowever, as I have been experimenting with Rust lately, I have gained the opinion that it is undeniable that the language does have some features that are a great help in reducing the developer’s cognitive load by offloading some safety enforcements to the compiler. Most of these safety measures are enforced by the compiler through the in-built (and notorious) Borrow Checker.\nIn simple words, the Borrow Checker is an XOR: it enforces that any entity in the program either be mutable or be aliasable. This means, at a very fundamental level, that the compiler now has additional scope of optimization, because it does not have to assume that a block of memory could be aliased under another pointer, like a C or C++ compiler usually would.\nThe Borrow Checker also enforces the notion of Lifetimes of objects. The basic idea is that if I were to construct some object (let’s call it A) from a non-owning reference to some other object (which we shall call B) that was live at the time of construction of A, then A should not outlive B, because in that case A would basically have a reference to an object that has been freed from memory.\nThe thing is, when I first started learning Rust, I had an incredibly hard time with it. Most of the tutorials I looked at, or the videos I saw on YouTube, assumed I was familiar with the whole Rust standard library and would use these super-high-level abstractions that would make it extremely hard to follow what was actually happening.\nComing from a C-based pointers-are-memory and everything-is-unsafe model, I was looking for something that could explain to me how unsafe code could be made safer in Rust, so I worked out a few snippets on my own after going through implementations in the Rust standard library. And that, is what this post is all about.\nIn the following sections, we will deliberately use unsafe Rust code to create a use-after-free condition, then evolve the faulty code so that the compiler understands the lifetimes of all related objects and compilation fails in case an object on which another object is dependent does not live long enough.\nUnsafe Rust: Raw Pointers and Use-After-Free The Rust compiler usually has no notion of what a raw pointer is tethered to. The compiler cannot track its lifetime or perform bounds checking when it is indexed. Basically, a raw pointer is the definition of unsafe in Rust.\nTo demonstrate a classic use-after-free hazard, let’s first construct a struct that holds a pointer, and its length (basically a simple fat-pointer). Then, to overload the [] operator so we can directly index into the memory, we shall implement the Index trait for the struct, and then write a simple assertion just to check if our implementation is correct.\nLet’s call this struct DataBuffer.\n1 2 3 4 struct DataBuffer { data: *const f32, length: usize, } The member data is a const raw pointer to memory of type f32.\nLet us implement a static method called new(...) on this struct that takes a non-owning reference to a slice of 1-D data of type f32 and constructs a DataBuffer from it.\n1 2 3 4 5 6 7 8 impl DataBuffer { fn new(sl: \u0026[f32]) -\u003e Self { Self { data: sl.as_ptr(), length: sl.len(), } } } The function, as I mentioned above, takes a reference to a slice, then extracts the pointer by calling the method as_ptr() on it. The method constructs a DataBuffer and then returns it.\nThe thing to note here is, the original vector from which this slice, which the new() method accepted, was constructed, is still owned by its original owner who passed it into the new() method.\nIf I were to clone the whole thing, the concept of lifetimes would never arise here, because the compiler would move the cloned memory into the new DataBuffer object and it would become the owner of that memory. But that would also mean we could kiss performance goodbye, so here we are.\nWe’ll now complete the basics and implement Index for DataBuffer so we can index into it.\n1 2 3 4 5 6 7 impl Index\u003cusize\u003e for DataBuffer { type Output = f32; fn index(\u0026self, i: usize) -\u003e \u0026Self::Output { assert!(i \u003c self.length); unsafe { \u0026*self.data.add(i) } } } There are a couple things to note here. First is the assertion. We noted that the compiler does not do bounds checking for raw pointers, so it is up to us to guarantee that we do not perform an out-of-bounds access on the array. However, this assert is also horrible for performance, and of course, there are much more elegant solutions in production scenarios.\nThe other thing to note here is the use of unsafe when dereferencing the pointer. Rust treats the dereference as unsafe, but not the creation of the pointer. That means that every time you deref a raw pointer, it has to be wrapped in an unsafe block. We offset the pointer by the required index, dereference it, then borrow and return the value.\nIt is time to write a main function and compile the code so we can see if it works.\n1 2 3 4 5 fn main() { let buf = vec![0.0, 1.0, 2.0, 3.0]; let dbuffer = DataBuffer::new(\u0026buf); assert_eq!(3.0, dbuffer[3]); } On running, we should see the code compile fine and the assertion pass.\n1 2 3 Compiling playground v0.0.1 (/playground) Finished dev profile [unoptimized + debuginfo] target(s) in 0.71s Running target/debug/playground Now let’s spice things up :)\nWe rewrite the main function, but now we declare the variable dbuffer as mutable so we can overwrite it. We now overwrite it in a scope inside the main function, in which we also re-declare the original vector we called buf from which dbuffer was created.\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 fn main() { let buf = vec![0.0, 1.0, 2.0, 3.0]; // dbuffer is now mutable. let mut dbuffer = DataBuffer::new(\u0026buf); // And here is the scope. Cool thing is, buf // will be freed from memory the moment this // scope goes OUT of scope. { // Re-declare buf. let buf = vec![0.0, 1.0, 2.0, 3.0]; // Now overwrite dbuffer to create it // from the new buf created in this scope. dbuffer = DataBuffer::new(\u0026buf); } assert_eq!(3.0, dbuffer[3]); } See what happened here? We forced a classic use-after-free! At the end of the scope inside the main function (in which buf was re-declared), the memory associated with buf will be dropped. However, the variable dbuffer which holds a raw pointer to that memory is still live. And that means we have now got a dangling pointer.\nAnd that is apparent when we run the code and hit the assertion. The safety guarantees of Rust fail, because of course we asked for it by playing with raw pointers.\n1 2 3 4 5 6 7 8 Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.70s Running `target/debug/playground` thread 'main' (13) panicked at src/main.rs:90:5: assertion `left == right` failed left: 3.0 right: 2.0701483e-19 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace Now here is the thing: How do we use the compiler to fix this? Which brings us to…\nLifetimes Rust allows the developer to syntactically relate the lifetimes of variables in the code. This is a very interesting feature indeed, and we shall now modify our definition of the DataBuffer struct to make use of it.\nLifetimes are usually specified with an identifier following an apostrophe (') in definitions and function arguments. Let’s say that we want our struct to live a lifetime of 'a. Note that the letter a can be any other identifier here, it does not really matter.\n1 2 3 4 struct DataBuffer\u003c'a\u003e { data: *const f32, length: usize, } We introduced the lifetime in the definition of DataBuffer. The same is required for the impl block.\n1 2 3 4 5 6 7 8 impl\u003c'a\u003e DataBuffer\u003c'a\u003e { fn new(sl: \u0026'a [f32]) -\u003e Self { Self { data: sl.as_ptr(), length: sl.len(), } } } This is where the compiler actually enforces the lifetime constraints. We wanted DataBuffer to have a lifetime of 'a, but that does not have a significance on its own. To give it meaning, we also tell the compiler that this is also how long the underlying reference from which we construct the struct will live.\nThis is done by passing in the lifetime in the function argument to new(...) as sl: \u0026'a [f32]. This tells the compiler that DataBuffer cannot outlive the reference, because we explicitly told it to enforce the same lifetimes on both of them.\nIn the implementation of the Index trait we just introduce an anonymous lifetime and let the compiler figure it out for us.\n1 2 3 4 5 6 7 8 impl Index\u003cusize\u003e for DataBuffer\u003c'_\u003e { type Output = f32; fn index(\u0026self, i: usize) -\u003e \u0026Self::Output { assert!(i \u003c self.length); unsafe { \u0026*self.data.add(i) } } } But here’s the catch. When you run the compiler on this code, it throws an error.\n1 2 3 4 5 6 7 error[E0392]: lifetime parameter `'a` is never used --\u003e src/main.rs:50:19 | 50 | struct DataBuffer\u003c'a\u003e { | ^^ unused lifetime parameter | = help: consider removing `'a`, referring to it in a field, or using a marker such as `PhantomData` The reason for the error is apparent from the error message. We introduced the lifetime parameter in the struct definition, but none of its members make use of the lifetime. The compiler suggests we either remove it or make use of the marker PhantomData. Removing it defeats our purpose, but, as we shall see, PhantomData is exactly what we need.\nPhantomData is an interesting feature of Rust. It is a zero-sized entity that is optimized away by the compiler and has no effect on runtime. Its only use is that of a marker. We insert a member of the PhantomData type into our struct, so that the compiler sees that our struct indeed binds to the lifetime we are specifying.\nThe definitions change a little bit:\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 use std::marker::PhantomData; struct DataBuffer\u003c'a\u003e { data: *const f32, length: usize, _marker: PhantomData\u003c\u0026'a f32\u003e, } impl\u003c'a\u003e DataBuffer\u003c'a\u003e { fn new(sl: \u0026'a [f32]) -\u003e Self { Self { data: sl.as_ptr(), length: sl.len(), _marker: PhantomData, } } } We just added a new member of type PhantomData into the struct and initialized it as part of the construction of DataBuffer.\nThe \u0026'a inside the signature of _marker is what does the binding work: it tells the compiler that this struct logically borrows data for lifetime 'a even though no member explicitly binds to it.\nAnd that is pretty much all. For the exact same main function we had above, we should now see compilation fail!\n1 2 3 4 5 6 7 8 9 10 11 12 13 error[E0597]: `buf` does not live long enough --\u003e src/main.rs:90:35 | 87 | let buf = vec![0.0, 1.0, 2.0, 3.0]; | --- binding `buf` declared here ... 90 | dbuffer = DataBuffer::new(\u0026buf); | ^^^^ borrowed value does not live long enough 91 | } | - `buf` dropped here while still borrowed 92 | 93 | assert_eq!(3.0, dbuffer[3]); | ------- borrow later used here This marker pattern is actually a common Rust idiom that is used all over the Rust standard library, and many a times what you see as Rust safety guarantees against use-after-free hazards is this exact idiom in action.\nConclusion The C compiler trusts you. It will very lovingly saw off your fingers if you order it to. The Rust compiler is reluctant to do that - so it gives you some options to free it from the guilt of the crime.\n",
+  "wordCount" : "2006",
+  "inLanguage": "en",
+  "datePublished": "2026-04-12T17:12:32+05:30",
+  "dateModified": "2026-04-12T17:12:32+05:30",
+  "author":{
+    "@type": "Person",
+    "name": "Vinayak Dev"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://vinayakdsci.github.io/posts/lifetimes/rust_lifetimes/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "vinayakdsci",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://vinayakdsci.github.io/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+<body id="top">
+    <header class="header">
+    <nav class="header-nav">
+        <div class="logo">
+            <a href="https://vinayakdsci.github.io/" accesskey="h" title="vinayakdsci (Alt + H)">vinayakdsci</a>
+        </div>
+        <ul id="menu" class="menu">
+            <a href="/index.xml" title="RSS" aria-label="RSS">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" height="18">
+                <path d="M4 11a9 9 0 0 1 9 9" />
+                <path d="M4 4a16 16 0 0 1 16 16" />
+                <circle cx="5" cy="19" r="1" />
+              </svg>
+            </a>
+            <a href="https://github.com/vinayakdsci" title="Github" aria-label="Github" style="margin-left: 18px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-github" viewBox="0 0 16 16">
+  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/>
+</svg></a>
+            <a href="https://reddit.com/u/vinayakdsci" title="Reddit" aria-label="Reddit" style="margin-left: 18px;">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-reddit" viewBox="0 0 16 16">
+  <path d="M6.167 8a.83.83 0 0 0-.83.83c0 .459.372.84.83.831a.831.831 0 0 0 0-1.661m1.843 3.647c.315 0 1.403-.038 1.976-.611a.23.23 0 0 0 0-.306.213.213 0 0 0-.306 0c-.353.363-1.126.487-1.67.487-.545 0-1.308-.124-1.671-.487a.213.213 0 0 0-.306 0 .213.213 0 0 0 0 .306c.564.563 1.652.61 1.977.61zm.992-2.807c0 .458.373.83.831.83s.83-.381.83-.83a.831.831 0 0 0-1.66 0z"/>
+  <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.828-1.165c-.315 0-.602.124-.812.325-.801-.573-1.9-.945-3.121-.993l.534-2.501 1.738.372a.83.83 0 1 0 .83-.869.83.83 0 0 0-.744.468l-1.938-.41a.2.2 0 0 0-.153.028.2.2 0 0 0-.086.134l-.592 2.788c-1.24.038-2.358.41-3.17.992-.21-.2-.496-.324-.81-.324a1.163 1.163 0 0 0-.478 2.224q-.03.17-.029.353c0 1.795 2.091 3.256 4.669 3.256s4.668-1.451 4.668-3.256c0-.114-.01-.238-.029-.353.401-.181.688-.592.688-1.069 0-.65-.525-1.165-1.165-1.165"/>
+</svg>
+            </a>
+            <a href="https://linkedin.com/in/vinayakdsci" title="LinkedIn" aria-label="LinkedIn" style="margin-left: 18px;">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-linkedin" viewBox="0 0 16 16">
+  <path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854zm4.943 12.248V6.169H2.542v7.225zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248S2.4 3.226 2.4 3.934c0 .694.521 1.248 1.327 1.248zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016l.016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225z"/>
+</svg>
+            </a>
+            <li>
+                <a href="https://vinayakdsci.github.io/index.xml" title="">
+                    <span><i class='fas fa-rss'></i> </span>
+                </a>
+            </li>
+            <li>
+                <a href="https://vinayakdsci.github.io/search/" title="Search (Alt &#43; /)" accesskey=/>
+                    <span>Search</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://vinayakdsci.github.io/tags/" title="Tags">
+                    <span>Tags</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <nav class="breadcrumbs" role="navigation" aria-label="Breadcrumb">
+    <a href='https://vinayakdsci.github.io/'>Home</a>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
+                <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+            <a href="https://vinayakdsci.github.io/posts/">Posts</a></nav>
+    <h1 class="post-title entry-hint-parent">
+      Rust: Exploring Lifetimes
+    </h1>
+    <div class="post-meta"><span title='2026-04-12 17:12:32 +0530 IST'>Apr 12, 2026</span>&nbsp;·&nbsp;<span>10 min</span>&nbsp;·&nbsp;<span>2006 words</span>&nbsp;·&nbsp;<span>Vinayak Dev</span>
+
+</div>
+  </header> 
+  <div class="post-content md-content"><h3 id="the-borrow-checker">The Borrow Checker<a hidden class="anchor" aria-hidden="true" href="#the-borrow-checker">#</a></h3>
+<p>I have written mostly C and C++ as long as I have programmed.</p>
+<p>However, as I have been experimenting with Rust lately, I have gained the opinion that it is undeniable that the language does have some features that are a great help in reducing the developer&rsquo;s cognitive load by offloading some safety enforcements to the compiler. Most of these safety measures are enforced by the compiler through the in-built (and notorious) <strong>Borrow Checker</strong>.</p>
+<p>In simple words, the Borrow Checker is an XOR: it enforces that any entity in the program either be mutable or be aliasable. This means, at a very fundamental level, that the compiler now has additional scope of optimization, because it does not have to assume that a block of memory could be aliased under another pointer, like a C or C++ compiler usually would.</p>
+<p>The Borrow Checker also enforces the notion of <strong>Lifetimes</strong> of objects. The basic idea is that if I were to construct some object (let&rsquo;s call it <code>A</code>) from a non-owning reference to some other object (which we shall call <code>B</code>) that was live at the time of construction of <code>A</code>, then <code>A</code> should <em>not</em> outlive <code>B</code>, because in that case <code>A</code> would basically have a reference to an object that has been freed from memory.</p>
+<p>The thing is, when I first started learning Rust, I had an incredibly hard time with it. Most of the tutorials I looked at, or the videos I saw on YouTube, assumed I was familiar with the whole Rust standard library and would use these super-high-level abstractions that would make it extremely hard to follow what was actually happening.</p>
+<p>Coming from a C-based <em>pointers-are-memory</em> and <em>everything-is-unsafe</em> model, I was looking for something that could explain to me how <em>unsafe</em> code could be made safer in Rust, so I worked out a few snippets on my own after going through implementations in the Rust standard library. And <em>that</em>, is what this post is all about.</p>
+<p>In the following sections, we will deliberately use unsafe Rust code to create a <code>use-after-free</code> condition, then evolve the faulty code so that the compiler understands the lifetimes of all related objects and compilation fails in case an object on which another object is dependent does not live long enough.</p>
+<h3 id="unsafe-rust-raw-pointers-and-use-after-free">Unsafe Rust: Raw Pointers and Use-After-Free<a hidden class="anchor" aria-hidden="true" href="#unsafe-rust-raw-pointers-and-use-after-free">#</a></h3>
+<p>The Rust compiler usually has <em>no</em> notion of what a raw pointer is tethered to. The compiler cannot track its lifetime or perform bounds checking when it is indexed. Basically, a raw pointer is the <em>definition</em> of unsafe in Rust.</p>
+<p>To demonstrate a classic <code>use-after-free</code> hazard, let&rsquo;s first construct a struct that holds a pointer, and its length (basically a simple fat-pointer). Then, to overload the <code>[]</code> operator so we can directly index into the memory, we shall implement the <code>Index</code> trait for the struct, and then write a simple assertion just to check if our implementation is correct.</p>
+<p>Let&rsquo;s call this struct <code>DataBuffer</code>.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-rust" data-lang="rust"><span class="line"><span class="cl"><span class="k">struct</span> <span class="nc">DataBuffer</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="n">data</span>: <span class="o">*</span><span class="k">const</span><span class="w"> </span><span class="kt">f32</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="n">length</span>: <span class="kt">usize</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>The member <code>data</code> is a const raw pointer to memory of type <code>f32</code>.</p>
+<p>Let us implement a static method called <code>new(...)</code> on this struct that takes a <strong>non-owning</strong> <strong>reference</strong> to a slice of 1-D data of type <code>f32</code> and constructs a <code>DataBuffer</code> from it.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-rust" data-lang="rust"><span class="line"><span class="cl"><span class="k">impl</span><span class="w"> </span><span class="n">DataBuffer</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">fn</span> <span class="nf">new</span><span class="p">(</span><span class="n">sl</span>: <span class="kp">&amp;</span><span class="p">[</span><span class="kt">f32</span><span class="p">])</span><span class="w"> </span>-&gt; <span class="nc">Self</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="bp">Self</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="n">data</span>: <span class="nc">sl</span><span class="p">.</span><span class="n">as_ptr</span><span class="p">(),</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="n">length</span>: <span class="nc">sl</span><span class="p">.</span><span class="n">len</span><span class="p">(),</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>The function, as I mentioned above, takes a reference to a slice, then extracts the pointer by calling the method <code>as_ptr()</code> on it. The method constructs a <code>DataBuffer</code> and then returns it.<br>
+The thing to note here is, the <em>original</em> vector from which this slice, which the <code>new()</code> method accepted, was constructed, is still owned by its <em>original</em> owner who passed it into the <code>new()</code> method.</p>
+<p>If I were to clone the whole thing, the concept of lifetimes would never arise here, because the compiler would <strong>move</strong> the cloned memory into the new <code>DataBuffer</code> object and it would become the owner of that memory. But that would also mean we could kiss performance goodbye, so here we are.</p>
+<p>We&rsquo;ll now complete the basics and implement <code>Index</code> for <code>DataBuffer</code> so we can index into it.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-rust" data-lang="rust"><span class="line"><span class="cl"><span class="k">impl</span><span class="w"> </span><span class="n">Index</span><span class="o">&lt;</span><span class="kt">usize</span><span class="o">&gt;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">DataBuffer</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">type</span> <span class="nc">Output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">f32</span><span class="p">;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">fn</span> <span class="nf">index</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">i</span>: <span class="kt">usize</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="kp">&amp;</span><span class="nc">Self</span>::<span class="n">Output</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="fm">assert!</span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">length</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="o">&amp;*</span><span class="bp">self</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w"> 
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>There are a couple things to note here. First is the assertion. We noted that the compiler does <em>not</em> do bounds checking for raw pointers, so it is up to us to guarantee that we do not perform an out-of-bounds access on the array. However, this assert is also horrible for performance, and of course, there are much more elegant solutions in production scenarios.</p>
+<p>The <em>other</em> thing to note here is the use of <code>unsafe</code> when dereferencing the pointer. Rust treats the <em>dereference</em> as unsafe, but <em>not</em> the creation of the pointer. That means that every time you deref a raw pointer, it has to be wrapped in an <code>unsafe</code> block. We offset the pointer by the required index, dereference it, then borrow and return the value.</p>
+<p>It is time to write a main function and compile the code so we can see if it works.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-rust" data-lang="rust"><span class="line"><span class="cl"><span class="k">fn</span> <span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">buf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="fm">vec!</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">2.0</span><span class="p">,</span><span class="w"> </span><span class="mf">3.0</span><span class="p">];</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">dbuffer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DataBuffer</span>::<span class="n">new</span><span class="p">(</span><span class="o">&amp;</span><span class="n">buf</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="fm">assert_eq!</span><span class="p">(</span><span class="mf">3.0</span><span class="p">,</span><span class="w"> </span><span class="n">dbuffer</span><span class="p">[</span><span class="mi">3</span><span class="p">]);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>On running, we should see the code compile fine and the assertion pass.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-plaintext" data-lang="plaintext"><span class="line"><span class="cl">Compiling playground v0.0.1 (/playground)
+</span></span><span class="line"><span class="cl"> Finished dev profile [unoptimized + debuginfo] target(s) in 0.71s
+</span></span><span class="line"><span class="cl">  Running target/debug/playground
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Now let&rsquo;s spice things up :)</p>
+<p>We rewrite the main function, but now we declare the variable <code>dbuffer</code> as <em>mutable</em> so we can overwrite it. We now overwrite it in a <em>scope</em> inside the main function, in which we also re-declare the original vector we called <code>buf</code> from which <code>dbuffer</code> was created.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span><span class="lnt">19
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-rust" data-lang="rust"><span class="line"><span class="cl"><span class="k">fn</span> <span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">buf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="fm">vec!</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">2.0</span><span class="p">,</span><span class="w"> </span><span class="mf">3.0</span><span class="p">];</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// dbuffer is now mutable.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">dbuffer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DataBuffer</span>::<span class="n">new</span><span class="p">(</span><span class="o">&amp;</span><span class="n">buf</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="c1">// And here is the scope. Cool thing is, buf
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="w">    </span><span class="c1">// will be freed from memory the moment this
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="w">    </span><span class="c1">// scope goes OUT of scope.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="w">    </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// Re-declare buf.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">buf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="fm">vec!</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">2.0</span><span class="p">,</span><span class="w"> </span><span class="mf">3.0</span><span class="p">];</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="c1">// Now overwrite dbuffer to create it
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="w">        </span><span class="c1">// from the new buf created in this scope.
+</span></span></span><span class="line"><span class="cl"><span class="c1"></span><span class="w">        </span><span class="n">dbuffer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DataBuffer</span>::<span class="n">new</span><span class="p">(</span><span class="o">&amp;</span><span class="n">buf</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="fm">assert_eq!</span><span class="p">(</span><span class="mf">3.0</span><span class="p">,</span><span class="w"> </span><span class="n">dbuffer</span><span class="p">[</span><span class="mi">3</span><span class="p">]);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>See what happened here? We forced a classic <code>use-after-free</code>! At the end of the scope inside the main function (in which <code>buf</code> was re-declared), the memory associated with <code>buf</code> will be dropped. However, the variable <code>dbuffer</code> which holds a raw pointer to that memory is <strong>still live</strong>. And that means we have now got a <strong>dangling pointer</strong>.</p>
+<p>And that is apparent when we run the code and hit the assertion. The safety guarantees of Rust fail, because of course we asked for it by playing with raw pointers.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-plaintext" data-lang="plaintext"><span class="line"><span class="cl">Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.70s
+</span></span><span class="line"><span class="cl">     Running `target/debug/playground`
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">thread &#39;main&#39; (13) panicked at src/main.rs:90:5:
+</span></span><span class="line"><span class="cl">assertion `left == right` failed
+</span></span><span class="line"><span class="cl">  left: 3.0
+</span></span><span class="line"><span class="cl"> right: 2.0701483e-19
+</span></span><span class="line"><span class="cl">note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>Now here is the thing: How do we use the compiler to fix this? Which brings us to&hellip;</p>
+<h3 id="lifetimes">Lifetimes<a hidden class="anchor" aria-hidden="true" href="#lifetimes">#</a></h3>
+<p>Rust allows the developer to syntactically relate the lifetimes of variables in the code. This is a very interesting feature indeed, and we shall now modify our definition of the <code>DataBuffer</code> struct to make use of it.</p>
+<p>Lifetimes are usually specified with an identifier following an apostrophe (<code>'</code>) in definitions and function arguments. Let&rsquo;s say that we want our struct to live a lifetime of <code>'a</code>. Note that the letter <code>a</code> can be any other identifier here, it does not really matter.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-rust" data-lang="rust"><span class="line"><span class="cl"><span class="k">struct</span> <span class="nc">DataBuffer</span><span class="o">&lt;</span><span class="na">&#39;a</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="n">data</span>: <span class="o">*</span><span class="k">const</span><span class="w"> </span><span class="kt">f32</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="n">length</span>: <span class="kt">usize</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>We introduced the lifetime in the definition of <code>DataBuffer</code>. The same is required for the <code>impl</code> block.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-rust" data-lang="rust"><span class="line"><span class="cl"><span class="k">impl</span><span class="o">&lt;</span><span class="na">&#39;a</span><span class="o">&gt;</span><span class="w"> </span><span class="n">DataBuffer</span><span class="o">&lt;</span><span class="na">&#39;a</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">fn</span> <span class="nf">new</span><span class="p">(</span><span class="n">sl</span>: <span class="kp">&amp;</span><span class="na">&#39;a</span> <span class="p">[</span><span class="kt">f32</span><span class="p">])</span><span class="w"> </span>-&gt; <span class="nc">Self</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="bp">Self</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="n">data</span>: <span class="nc">sl</span><span class="p">.</span><span class="n">as_ptr</span><span class="p">(),</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="n">length</span>: <span class="nc">sl</span><span class="p">.</span><span class="n">len</span><span class="p">(),</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p><em>This</em> is where the compiler actually <em>enforces</em> the lifetime constraints. We wanted <code>DataBuffer</code> to have a lifetime of <code>'a</code>, but that does not have a significance on its own. To give it meaning, we also tell the compiler that this is <em>also</em> how long the underlying reference from which we construct the struct will live.</p>
+<p>This is done by passing in the lifetime in the function argument to <code>new(...)</code> as <code>sl: &amp;'a [f32]</code>. This tells the compiler that <code>DataBuffer</code> <em>cannot</em> outlive the reference, because we explicitly told it to enforce the same lifetimes on both of them.</p>
+<p>In the implementation of the <code>Index</code> trait we just introduce an anonymous lifetime and let the compiler figure it out for us.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span><span class="lnt">8
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-rust" data-lang="rust"><span class="line"><span class="cl"><span class="k">impl</span><span class="w"> </span><span class="n">Index</span><span class="o">&lt;</span><span class="kt">usize</span><span class="o">&gt;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">DataBuffer</span><span class="o">&lt;</span><span class="nb">&#39;_</span><span class="o">&gt;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">type</span> <span class="nc">Output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">f32</span><span class="p">;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">fn</span> <span class="nf">index</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">i</span>: <span class="kt">usize</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="kp">&amp;</span><span class="nc">Self</span>::<span class="n">Output</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="fm">assert!</span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">length</span><span class="p">);</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="o">&amp;*</span><span class="bp">self</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="n">add</span><span class="p">(</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>But here&rsquo;s the catch. When you run the compiler on this code, it throws an error.</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt">1
+</span><span class="lnt">2
+</span><span class="lnt">3
+</span><span class="lnt">4
+</span><span class="lnt">5
+</span><span class="lnt">6
+</span><span class="lnt">7
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-plaintext" data-lang="plaintext"><span class="line"><span class="cl">error[E0392]: lifetime parameter `&#39;a` is never used
+</span></span><span class="line"><span class="cl">  --&gt; src/main.rs:50:19
+</span></span><span class="line"><span class="cl">   |
+</span></span><span class="line"><span class="cl">50 | struct DataBuffer&lt;&#39;a&gt; {
+</span></span><span class="line"><span class="cl">   |                   ^^ unused lifetime parameter
+</span></span><span class="line"><span class="cl">   |
+</span></span><span class="line"><span class="cl">   = help: consider removing `&#39;a`, referring to it in a field, or using a marker such as `PhantomData`
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>The reason for the error is apparent from the error message. We introduced the lifetime parameter in the struct definition, but none of its members make use of the lifetime. The compiler suggests we either remove it or make use of the marker <code>PhantomData</code>. Removing it defeats our purpose, but, as we shall see, <code>PhantomData</code> is exactly what we need.</p>
+<p><code>PhantomData</code> is an interesting feature of Rust. It is a zero-sized entity that is optimized away by the compiler and has no effect on runtime. Its only use is that of a <strong>marker</strong>. We insert a member of the <code>PhantomData</code> type into our struct, so that the compiler sees that our struct indeed binds to the lifetime we are specifying.</p>
+<p>The definitions change a little bit:</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span><span class="lnt">14
+</span><span class="lnt">15
+</span><span class="lnt">16
+</span><span class="lnt">17
+</span><span class="lnt">18
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-rust" data-lang="rust"><span class="line"><span class="cl"><span class="k">use</span><span class="w"> </span><span class="n">std</span>::<span class="n">marker</span>::<span class="n">PhantomData</span><span class="p">;</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="k">struct</span> <span class="nc">DataBuffer</span><span class="o">&lt;</span><span class="na">&#39;a</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="n">data</span>: <span class="o">*</span><span class="k">const</span><span class="w"> </span><span class="kt">f32</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="n">length</span>: <span class="kt">usize</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="n">_marker</span>: <span class="nc">PhantomData</span><span class="o">&lt;&amp;</span><span class="na">&#39;a</span><span class="w"> </span><span class="kt">f32</span><span class="o">&gt;</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="k">impl</span><span class="o">&lt;</span><span class="na">&#39;a</span><span class="o">&gt;</span><span class="w"> </span><span class="n">DataBuffer</span><span class="o">&lt;</span><span class="na">&#39;a</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="k">fn</span> <span class="nf">new</span><span class="p">(</span><span class="n">sl</span>: <span class="kp">&amp;</span><span class="na">&#39;a</span> <span class="p">[</span><span class="kt">f32</span><span class="p">])</span><span class="w"> </span>-&gt; <span class="nc">Self</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="bp">Self</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="n">data</span>: <span class="nc">sl</span><span class="p">.</span><span class="n">as_ptr</span><span class="p">(),</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="n">length</span>: <span class="nc">sl</span><span class="p">.</span><span class="n">len</span><span class="p">(),</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">            </span><span class="n">_marker</span>: <span class="nc">PhantomData</span><span class="p">,</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">        </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="p">}</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w"></span><span class="p">}</span><span class="w">
+</span></span></span></code></pre></td></tr></table>
+</div>
+</div><p>We just added a new member of type <code>PhantomData</code> into the struct and initialized it as part of the construction of <code>DataBuffer</code>.</p>
+<p>The <code>&amp;'a</code> inside the signature of <code>_marker</code> is what does the binding work: it tells the compiler that this struct logically borrows data for lifetime <code>'a</code> even though no member explicitly binds to it.</p>
+<p>And that is pretty much all. For the exact same main function we had above, we should now see compilation fail!</p>
+<div class="highlight"><div class="chroma">
+<table class="lntable"><tr><td class="lntd">
+<pre tabindex="0" class="chroma"><code><span class="lnt"> 1
+</span><span class="lnt"> 2
+</span><span class="lnt"> 3
+</span><span class="lnt"> 4
+</span><span class="lnt"> 5
+</span><span class="lnt"> 6
+</span><span class="lnt"> 7
+</span><span class="lnt"> 8
+</span><span class="lnt"> 9
+</span><span class="lnt">10
+</span><span class="lnt">11
+</span><span class="lnt">12
+</span><span class="lnt">13
+</span></code></pre></td>
+<td class="lntd">
+<pre tabindex="0" class="chroma"><code class="language-plaintext" data-lang="plaintext"><span class="line"><span class="cl">error[E0597]: `buf` does not live long enough
+</span></span><span class="line"><span class="cl">  --&gt; src/main.rs:90:35
+</span></span><span class="line"><span class="cl">   |
+</span></span><span class="line"><span class="cl">87 |         let buf = vec![0.0, 1.0, 2.0, 3.0];
+</span></span><span class="line"><span class="cl">   |             --- binding `buf` declared here
+</span></span><span class="line"><span class="cl">...
+</span></span><span class="line"><span class="cl">90 |         dbuffer = DataBuffer::new(&amp;buf);
+</span></span><span class="line"><span class="cl">   |                                   ^^^^ borrowed value does not live long enough
+</span></span><span class="line"><span class="cl">91 |     }
+</span></span><span class="line"><span class="cl">   |     - `buf` dropped here while still borrowed
+</span></span><span class="line"><span class="cl">92 |
+</span></span><span class="line"><span class="cl">93 |     assert_eq!(3.0, dbuffer[3]);
+</span></span><span class="line"><span class="cl">   |                     ------- borrow later used here
+</span></span></code></pre></td></tr></table>
+</div>
+</div><p>This marker pattern is actually a common Rust idiom that is used all over the Rust standard library, and many a times what you see as Rust safety guarantees against <code>use-after-free</code> hazards is this exact idiom in action.</p>
+<h3 id="conclusion">Conclusion<a hidden class="anchor" aria-hidden="true" href="#conclusion">#</a></h3>
+<p>The C compiler trusts you. It will very lovingly saw off your fingers if you order it to. The Rust compiler is reluctant to do that - so it gives you some options to free it from the guilt of the crime.</p>
+
+
+  </div>
+
+  <footer class="post-footer">
+    <ul class="post-tags">
+      <li><a href="https://vinayakdsci.github.io/tags/rust/">Rust</a></li>
+      <li><a href="https://vinayakdsci.github.io/tags/lifetimes/">Lifetimes</a></li>
+      <li><a href="https://vinayakdsci.github.io/tags/low-level-programming/">Low Level Programming</a></li>
+      <li><a href="https://vinayakdsci.github.io/tags/ownership/">Ownership</a></li>
+    </ul>
+
+  </footer>
+</article>
+    </main>
+    
+<footer class="footer">
+        <span>&copy; 2026 <a href="https://vinayakdsci.github.io/">vinayakdsci</a></span> · 
+
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://github.com/adityatelange/hugo-PaperMod/" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" id="top-link" class="top-link hidden" aria-label="go to top" title="Go to Top (Alt + G)" accesskey="g">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevrons-up">
+        <polyline points="17 11 12 6 7 11"></polyline>
+        <polyline points="17 18 12 13 7 18"></polyline>
+    </svg>
+</a>
+</body>
+
+</html>
