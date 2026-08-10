@@ -1,0 +1,5 @@
+
+User-agent: *
+Allow: /
+
+Sitemap: https://vinayakdsci.github.io/sitemap-index.xml
